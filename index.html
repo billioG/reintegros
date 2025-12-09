@@ -284,7 +284,8 @@
         // --- CONFIGURACIÓN ---
         let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
         // URL ACTUALIZADA POR EL USUARIO
-        const DEFAULT_SCRIPT_URL = "https://script.google.com/a/macros/1bot.org/s/AKfycbyzPLnruJtBNlU0BFo7imhpCdUgbihMeKg-Hjc3i3WjWpxA5TWtsze2LHlt64GRUQD0/exec";
+        const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzb2303oJU_uneHezhd4H7UmPZvfGbDebrsCC-yCSUPTawbnC7YJYUNfYtP0z7RY_mH/exec";
+        
         
         // Usar la guardada o la default
         let SCRIPT_URL = localStorage.getItem('googleScriptUrl') || DEFAULT_SCRIPT_URL;
