@@ -36,7 +36,7 @@
         <div class="flex justify-between items-center max-w-2xl mx-auto">
             <h1 class="text-lg font-bold flex items-center gap-2 text-teal-400">
                 <span class="material-icons-round">receipt_long</span>
-                Reintegros Pro
+                Reintegros Pro v3.4
             </h1>
             <button onclick="toggleConfigModal()" class="text-gray-400 hover:text-white transition">
                 <span class="material-icons-round">settings</span>
@@ -351,7 +351,13 @@
             const recentRows = rows.slice().reverse().slice(0, 10); 
 
             rows.forEach(r => {
-                const val = r.c[2] ? r.c[2].v : 0; // Valor
+                // FIX: Validar que sea número
+                let val = r.c[2] ? r.c[2].v : 0;
+                if (typeof val !== 'number') {
+                    // Intentar convertir si viene como string
+                    val = parseFloat(String(val).replace(/[^0-9.-]+/g,"")) || 0;
+                }
+                
                 const proj = r.c[3] ? r.c[3].v : "Otros"; // Proyecto
                 total += val;
                 projectMap[proj] = (projectMap[proj] || 0) + val;
@@ -365,8 +371,13 @@
             recentRows.forEach(r => {
                 const fecha = r.c[0] ? (r.c[0].f || r.c[0].v) : "";
                 const desc = r.c[1] ? r.c[1].v : "";
-                const val = r.c[2] ? r.c[2].v : 0;
                 
+                // FIX: Validar valor individual
+                let val = r.c[2] ? r.c[2].v : 0;
+                if (typeof val !== 'number') {
+                    val = parseFloat(String(val).replace(/[^0-9.-]+/g,"")) || 0;
+                }
+
                 tbody.innerHTML += `
                     <tr class="border-b hover:bg-gray-50">
                         <td class="p-2">${fecha}</td>
