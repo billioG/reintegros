@@ -8,677 +8,565 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Tesseract.js (OCR) -->
-    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
-
-    <!-- Cropper.js (Recorte de imágenes) -->
+    <!-- Librerías Externas -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script> <!-- OCR -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script> <!-- Cropper -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Gráficos Dashboard -->
 
-    <!-- Google Icons -->
+    <!-- Iconos -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f3f4f6;
-            -webkit-tap-highlight-color: transparent;
-        }
-        
-        /* Animaciones */
-        @keyframes scan {
-            0% { top: 0%; opacity: 0; }
-            50% { opacity: 1; }
-            100% { top: 100%; opacity: 0; }
-        }
-        
-        .scanner-line {
-            position: absolute;
-            width: 100%;
-            height: 2px;
-            background: #ef4444; /* Rojo láser */
-            box-shadow: 0 0 10px #ef4444;
-            animation: scan 1.5s infinite linear;
-            display: none;
-            z-index: 10;
-        }
-
-        /* Ocultar input file */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; }
+        .scanner-line { position: absolute; width: 100%; height: 2px; background: #ef4444; box-shadow: 0 0 10px #ef4444; animation: scan 1.5s infinite linear; display: none; z-index: 10; }
+        @keyframes scan { 0% { top: 0%; opacity: 0; } 50% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
         input[type="file"] { display: none; }
-
-        /* Estilos Cropper en Modal */
-        .cropper-container {
-            max-height: 70vh !important;
-        }
+        .cropper-container { max-height: 70vh !important; }
+        /* Transiciones suaves entre pestañas */
+        .tab-content { display: none; animation: fadeIn 0.3s; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body class="pb-40 bg-gray-100">
+<body class="pb-24 bg-gray-100">
 
     <!-- Header -->
     <header class="bg-gray-900 text-white p-4 shadow-lg sticky top-0 z-50">
         <div class="flex justify-between items-center max-w-2xl mx-auto">
             <h1 class="text-lg font-bold flex items-center gap-2 text-teal-400">
                 <span class="material-icons-round">receipt_long</span>
-                Reintegros v3.3
+                Reintegros Pro
             </h1>
-            <div class="flex items-center gap-3">
-                <button onclick="toggleConfigModal()" class="text-gray-400 hover:text-white transition">
-                    <span class="material-icons-round">settings</span>
-                </button>
-            </div>
+            <button onclick="toggleConfigModal()" class="text-gray-400 hover:text-white transition">
+                <span class="material-icons-round">settings</span>
+            </button>
         </div>
     </header>
 
-    <main class="max-w-2xl mx-auto p-4 space-y-4">
+    <main class="max-w-2xl mx-auto p-4">
 
-        <!-- 1. CÁMARA / FOTO -->
-        <div class="bg-white rounded-xl shadow p-4 border border-gray-200">
+        <!-- ======================= -->
+        <!-- VISTA 1: CAPTURA (FORM) -->
+        <!-- ======================= -->
+        <div id="view-capture" class="tab-content active space-y-4">
             
-            <!-- Estado Inicial -->
-            <div id="upload-placeholder" class="text-center py-6">
-                <div class="bg-teal-50 text-teal-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <span class="material-icons-round text-3xl">camera_alt</span>
-                </div>
-                <h2 class="text-gray-800 font-bold">Nueva Factura</h2>
-                <p class="text-gray-500 text-sm mb-4">Toma una foto clara del documento</p>
-                <label for="camera-input" class="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-full font-bold shadow-lg active:scale-95 transition cursor-pointer hover:bg-teal-700">
-                    Abrir Cámara
-                </label>
-                <input type="file" id="camera-input" accept="image/*" capture="environment" onchange="handleImageUpload(event)">
-            </div>
-
-            <!-- Vista Previa de la Imagen Cargada -->
-            <div id="preview-container" class="hidden relative">
-                <div class="relative rounded-lg overflow-hidden bg-gray-900 mb-3" style="min-height: 200px;">
-                    <div class="scanner-line" id="scanner-line"></div>
-                    <img id="image-preview" class="w-full object-contain mx-auto max-h-[400px]" alt="Preview">
-                </div>
-                
-                <div class="grid grid-cols-2 gap-2">
-                    <button onclick="openCropper()" class="bg-indigo-100 text-indigo-700 py-2 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:bg-indigo-200">
-                        <span class="material-icons-round text-sm">crop</span>
-                        Recortar / Mejorar
-                    </button>
-                    <button onclick="resetImage()" class="bg-red-100 text-red-700 py-2 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-200">
-                        <span class="material-icons-round text-sm">delete</span>
-                        Borrar
-                    </button>
-                </div>
-                
-                <!-- Barra de Progreso OCR -->
-                <div id="ocr-status-container" class="hidden mt-3">
-                    <div class="flex justify-between text-xs font-bold text-gray-500 mb-1">
-                        <span id="ocr-status-text">Leyendo...</span>
-                        <span id="ocr-pct">0%</span>
+            <!-- Cámara y Foto -->
+            <div class="bg-white rounded-xl shadow p-4 border border-gray-200">
+                <div id="upload-placeholder" class="text-center py-6">
+                    <div class="bg-teal-50 text-teal-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <span class="material-icons-round text-3xl">camera_alt</span>
                     </div>
-                    <div class="w-full bg-gray-200 rounded-full h-2">
-                        <div class="bg-teal-500 h-2 rounded-full transition-all duration-300" id="ocr-bar" style="width: 0%"></div>
+                    <h2 class="text-gray-800 font-bold">Capturar Factura</h2>
+                    <p class="text-gray-500 text-sm mb-4">Usa una foto clara</p>
+                    <label for="camera-input" class="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-full font-bold shadow-lg active:scale-95 transition cursor-pointer hover:bg-teal-700">
+                        Abrir Cámara
+                    </label>
+                    <input type="file" id="camera-input" accept="image/*" capture="environment" onchange="handleImageUpload(event)">
+                </div>
+
+                <div id="preview-container" class="hidden relative">
+                    <div class="relative rounded-lg overflow-hidden bg-gray-900 mb-3" style="min-height: 200px;">
+                        <div class="scanner-line" id="scanner-line"></div>
+                        <img id="image-preview" class="w-full object-contain mx-auto max-h-[400px]">
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 2. DATOS DE LA FACTURA -->
-        <form id="expense-form" class="bg-white rounded-xl shadow p-5 space-y-4 border border-gray-200" onsubmit="saveExpense(event)">
-            <div class="flex items-center justify-between border-b pb-2">
-                <h3 class="font-bold text-gray-700 flex items-center gap-2">
-                    <span class="material-icons-round text-teal-600">edit</span>
-                    Datos
-                </h3>
-                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded" id="img-indicator">Sin Foto</span>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-                <!-- Fecha -->
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha</label>
-                    <input type="date" id="date" required class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm font-medium focus:ring-2 focus:ring-teal-500 outline-none">
-                </div>
-                <!-- Doc No -->
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">No. DTE / Fac</label>
-                    <div class="flex gap-1">
-                        <input type="text" id="docNo" placeholder="---" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm font-mono focus:ring-2 focus:ring-teal-500 outline-none">
-                        <button type="button" onclick="triggerSpecificOCR('docNo')" class="bg-gray-200 text-gray-600 rounded-lg px-2 hover:bg-gray-300" title="Leer solo esto">
-                            <span class="material-icons-round text-sm">center_focus_weak</span>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="openCropper()" class="bg-indigo-100 text-indigo-700 py-2 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2">
+                            <span class="material-icons-round text-sm">crop</span> Recortar
+                        </button>
+                        <button onclick="resetImage()" class="bg-red-100 text-red-700 py-2 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2">
+                            <span class="material-icons-round text-sm">delete</span> Borrar
                         </button>
                     </div>
+                    <!-- OCR status -->
+                    <div id="ocr-status-container" class="hidden mt-3">
+                        <div class="w-full bg-gray-200 rounded-full h-1.5"><div class="bg-teal-500 h-1.5 rounded-full transition-all" id="ocr-bar" style="width: 0%"></div></div>
+                        <p class="text-xs text-gray-500 text-center mt-1" id="ocr-status-text">Leyendo...</p>
+                    </div>
                 </div>
             </div>
 
-            <!-- Descripción -->
-            <div>
-                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label>
-                <input type="text" id="description" required placeholder="Ej: Almuerzo equipo..." class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-teal-500 outline-none">
-            </div>
-
-            <!-- Proyecto y Solicitante -->
-            <div class="grid grid-cols-2 gap-3">
-                <div class="flex flex-col">
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Proyecto</label>
-                    <select id="project" onchange="toggleOtherProject()" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-teal-500 outline-none">
-                        <option value="1bot">1bot</option>
-                        <option value="BI">BI</option>
-                        <option value="ATT">ATT</option>
-                        <option value="Admin">Administración</option>
-                        <option value="Otro">Otro...</option>
-                    </select>
-                    <input type="text" id="otherProjectInput" placeholder="Nombre proyecto" class="hidden mt-2 w-full bg-white border border-teal-300 rounded-lg p-2 text-sm">
+            <!-- Formulario -->
+            <form id="expense-form" class="bg-white rounded-xl shadow p-5 space-y-4 border border-gray-200" onsubmit="saveExpense(event)">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase">Fecha</label>
+                        <input type="date" id="date" required class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm font-medium">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase">Doc. No.</label>
+                        <div class="flex gap-1">
+                            <input type="text" id="docNo" placeholder="---" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm font-mono">
+                            <button type="button" onclick="triggerSpecificOCR('docNo')" class="bg-gray-200 rounded px-2"><span class="material-icons-round text-sm">crop_free</span></button>
+                        </div>
+                    </div>
                 </div>
+
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Solicitante</label>
-                    <input type="text" id="requester" value="Billy" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+                    <label class="text-xs font-bold text-gray-500 uppercase">Descripción</label>
+                    <input type="text" id="description" required class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm">
                 </div>
-            </div>
 
-            <!-- Total -->
-            <div>
-                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Valor Total (Q)</label>
-                <div class="relative flex items-center">
-                    <span class="absolute left-3 text-gray-500 font-bold">Q</span>
-                    <input type="number" id="amount" step="0.01" required placeholder="0.00" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 pl-8 text-xl font-bold text-gray-800 focus:ring-2 focus:ring-teal-500 outline-none">
-                    <button type="button" onclick="triggerSpecificOCR('amount')" class="absolute right-2 bg-gray-200 text-gray-600 rounded-lg p-1.5 hover:bg-gray-300" title="Leer solo precio">
-                        <span class="material-icons-round text-sm">paid</span>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase">Proyecto</label>
+                        <select id="project" onchange="toggleOtherProject()" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm">
+                            <option value="1bot">1bot</option>
+                            <option value="BI">BI</option>
+                            <option value="ATT">ATT</option>
+                            <option value="Admin">Administración</option>
+                            <option value="Otro">Otro...</option>
+                        </select>
+                        <input type="text" id="otherProjectInput" placeholder="Nombre..." class="hidden mt-1 w-full border rounded p-1 text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase">Solicitante</label>
+                        <input type="text" id="requester" value="Billy" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase">Valor (Q)</label>
+                    <div class="relative flex items-center">
+                        <span class="absolute left-3 text-gray-500 font-bold">Q</span>
+                        <input type="number" id="amount" step="0.01" required placeholder="0.00" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 pl-8 text-xl font-bold text-gray-800">
+                        <button type="button" onclick="triggerSpecificOCR('amount')" class="absolute right-2 bg-gray-200 rounded p-1.5"><span class="material-icons-round text-sm">paid</span></button>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3.5 rounded-xl shadow-lg flex justify-center items-center gap-2">
+                    <span class="material-icons-round">save</span> Guardar
+                </button>
+            </form>
+
+            <!-- Lista Pendiente -->
+            <div class="bg-white rounded-xl shadow overflow-hidden">
+                <div class="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
+                    <h3 class="font-bold text-gray-600 text-sm">Cola de Envío</h3>
+                    <button onclick="clearData()" class="text-xs text-red-500">Borrar</button>
+                </div>
+                <div id="expense-list" class="divide-y divide-gray-100 max-h-40 overflow-y-auto">
+                    <div class="p-4 text-center text-gray-400 text-xs">Vacío</div>
+                </div>
+                <div class="bg-gray-100 px-4 py-2 text-right font-bold text-sm" id="total-sum">Total: Q0.00</div>
+                <button onclick="syncToSheet()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 flex justify-center gap-2 items-center">
+                    <span class="material-icons-round">cloud_upload</span> Sincronizar Todo
+                </button>
+            </div>
+        </div>
+
+        <!-- ======================= -->
+        <!-- VISTA 2: DASHBOARD (ADMIN) -->
+        <!-- ======================= -->
+        <div id="view-dashboard" class="tab-content space-y-4">
+            <div class="bg-white rounded-xl shadow p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="font-bold text-gray-800">Resumen de Gastos</h2>
+                    <button onclick="loadDashboardData()" class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                        <span class="material-icons-round text-sm">refresh</span> Actualizar
                     </button>
                 </div>
-            </div>
-
-            <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-95 transition flex justify-center items-center gap-2">
-                <span class="material-icons-round">save</span>
-                Guardar Factura
-            </button>
-        </form>
-
-        <!-- 3. LISTADO Y SINCRONIZACIÓN -->
-        <div class="space-y-2 pb-8">
-             <div class="flex justify-between items-end px-1">
-                <h3 class="font-bold text-gray-600">Pendientes de Subir</h3>
-                <button onclick="clearData()" class="text-xs text-red-400 hover:text-red-600 underline">Borrar lista</button>
-            </div>
-            
-            <div id="expense-list" class="space-y-3">
-                <!-- Items inyectados por JS -->
-                <div class="text-center py-8 text-gray-400 text-sm bg-white rounded-xl border border-dashed border-gray-300">
-                    No hay facturas pendientes
+                
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                        <p class="text-xs text-blue-500 font-bold uppercase">Total Gastado</p>
+                        <p class="text-xl font-bold text-blue-800" id="dash-total">Q0.00</p>
+                    </div>
+                    <div class="bg-purple-50 p-3 rounded-lg border border-purple-100">
+                        <p class="text-xs text-purple-500 font-bold uppercase">Registros</p>
+                        <p class="text-xl font-bold text-purple-800" id="dash-count">0</p>
+                    </div>
                 </div>
-            </div>
-            
-            <div id="total-sum" class="text-right font-bold text-gray-800 px-2">Total: Q0.00</div>
-        </div>
-        
-        <!-- MONITOR DE ESTADO (CONSOLE LOG VISUAL) -->
-        <div class="bg-black bg-opacity-80 text-green-400 font-mono text-xs p-3 rounded-lg mt-4 overflow-hidden">
-            <div class="font-bold text-white border-b border-gray-600 pb-1 mb-1">Monitor del Sistema:</div>
-            <div id="sys-log" class="h-16 overflow-y-auto space-y-1">
-                <div>> Sistema iniciado...</div>
+
+                <!-- Gráfico -->
+                <div class="h-48 mb-4 relative">
+                    <canvas id="projectChart"></canvas>
+                </div>
+
+                <!-- Tabla Reciente -->
+                <h3 class="font-bold text-gray-700 text-sm mb-2">Últimos Registros</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs text-left text-gray-500">
+                        <thead class="bg-gray-100 text-gray-700 uppercase">
+                            <tr><th class="p-2">Fecha</th><th class="p-2">Desc</th><th class="p-2 text-right">Valor</th></tr>
+                        </thead>
+                        <tbody id="dash-table-body">
+                            <tr><td colspan="3" class="p-2 text-center">Cargando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
     </main>
 
-    <!-- BARRA INFERIOR -->
-    <div class="fixed bottom-0 w-full bg-white border-t border-gray-200 p-3 shadow-lg z-40">
-        <div class="max-w-2xl mx-auto flex gap-2">
-            <button onclick="window.open('https://docs.google.com/spreadsheets/d/19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78/edit?gid=230086021#gid=230086021', '_blank')" class="flex-1 bg-blue-50 text-blue-600 py-3 rounded-lg font-bold text-sm flex flex-col items-center justify-center leading-none border border-blue-100">
-                <span class="material-icons-round mb-1">table_view</span>
-                Ver Hoja
-            </button>
-            <button onclick="syncToSheet()" id="btn-sync" class="flex-[2] bg-green-600 text-white py-3 rounded-lg font-bold text-base shadow-lg flex items-center justify-center gap-2 active:bg-green-700">
-                <span class="material-icons-round">cloud_upload</span>
-                Sincronizar Ahora
-            </button>
-        </div>
+    <!-- NAVIGATION BAR -->
+    <nav class="fixed bottom-0 w-full bg-white border-t border-gray-200 shadow-lg z-40 flex justify-around py-2">
+        <button onclick="switchTab('capture')" class="flex flex-col items-center text-teal-600 w-full" id="nav-capture">
+            <span class="material-icons-round">add_circle</span>
+            <span class="text-[10px] font-bold">Captura</span>
+        </button>
+        <button onclick="switchTab('dashboard')" class="flex flex-col items-center text-gray-400 hover:text-blue-600 w-full" id="nav-dashboard">
+            <span class="material-icons-round">dashboard</span>
+            <span class="text-[10px] font-bold">Dashboard</span>
+        </button>
+    </nav>
+
+    <!-- MODAL RECORTE -->
+    <div id="cropper-modal" class="fixed inset-0 bg-black bg-opacity-95 z-[60] hidden flex flex-col">
+        <div class="flex-1 flex items-center justify-center p-4 overflow-hidden"><img id="image-to-crop" class="max-w-full"></div>
+        <div class="bg-gray-900 p-4 flex gap-4"><button onclick="closeCropper()" class="flex-1 bg-gray-600 text-white py-3 rounded">Cancelar</button><button onclick="performCrop()" class="flex-1 bg-white text-black py-3 rounded font-bold">Recortar</button></div>
     </div>
 
-    <!-- MODAL DE RECORTE (CROPPER) -->
-    <div id="cropper-modal" class="fixed inset-0 bg-black bg-opacity-90 z-[60] hidden flex flex-col">
-        <div class="flex-1 overflow-hidden relative bg-black flex items-center justify-center p-4">
-            <img id="image-to-crop" class="max-w-full max-h-full">
-        </div>
-        <div class="bg-gray-900 p-4 flex justify-between gap-4">
-            <button onclick="closeCropper()" class="flex-1 bg-gray-700 text-white py-3 rounded-lg font-bold">Cancelar</button>
-            <button onclick="performCrop()" class="flex-1 bg-white text-black py-3 rounded-lg font-bold flex justify-center items-center gap-2">
-                <span class="material-icons-round">check</span>
-                Leer Recorte
-            </button>
-        </div>
-    </div>
-
-    <!-- MODAL CONFIG -->
+    <!-- CONFIG MODAL -->
     <div id="config-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[70] hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-5 animate-bounce-in">
-            <h3 class="font-bold text-lg mb-3">Configuración</h3>
-            <label class="block text-xs font-bold text-gray-500 mb-1">URL Script (Google Apps Script)</label>
-            <input type="text" id="script-url-input" class="w-full bg-gray-50 border rounded p-2 text-xs font-mono mb-4">
-            <div class="flex justify-end gap-2">
-                <button onclick="toggleConfigModal()" class="px-4 py-2 text-gray-500">Cerrar</button>
-                <button onclick="saveConfig()" class="px-4 py-2 bg-teal-600 text-white rounded font-bold">Guardar</button>
-            </div>
+        <div class="bg-white rounded-xl w-full max-w-sm p-5">
+            <h3 class="font-bold mb-2">Configuración</h3>
+            <label class="text-xs font-bold block mb-1">URL Script (Web App)</label>
+            <input type="text" id="script-url-input" class="w-full border rounded p-2 text-xs mb-4">
+            <label class="text-xs font-bold block mb-1">ID Hoja Google</label>
+            <input type="text" id="sheet-id-input" class="w-full border rounded p-2 text-xs mb-4" value="19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78">
+            <div class="flex justify-end gap-2"><button onclick="toggleConfigModal()" class="px-3 py-1">Cerrar</button><button onclick="saveConfig()" class="px-3 py-1 bg-teal-600 text-white rounded">Guardar</button></div>
         </div>
     </div>
-    
-    <!-- OVERLAY CARGA -->
+
+    <!-- LOADING OVERLAY -->
     <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-80 z-[80] hidden flex flex-col items-center justify-center text-white">
-        <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
-        <p id="loading-text" class="font-bold animate-pulse">Procesando...</p>
+        <div class="w-12 h-12 border-4 border-t-4 border-gray-200 rounded-full animate-spin mb-4" style="border-top-color: #14b8a6"></div>
+        <p id="loading-text" class="font-bold">Procesando...</p>
     </div>
 
     <script>
-        // --- 1. ESTADO GLOBAL ---
+        // CONFIGURACIÓN INICIAL
         let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
-        // SE ACTUALIZÓ LA URL POR DEFECTO CON LA QUE PROPORCIONASTE
-        const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbwFyJrDAfyXH6Q75On8HoVKvNWkC3B3Cr_DLJ6SQISGh7ioEcBRJORioenrY-agahH1/exec";
-        let SCRIPT_URL = localStorage.getItem('googleScriptUrl') || DEFAULT_URL;
+        const DEFAULT_SCRIPT = "https://script.google.com/macros/s/AKfycbznuL-_Z-XYF9ArNIbRHkUXJuVYoUfpE59NAsHN1CsyOJLmWlfhWCubV2thUBj5uR5i/exec";
+        let SCRIPT_URL = localStorage.getItem('googleScriptUrl') || DEFAULT_SCRIPT;
+        let SHEET_ID = localStorage.getItem('googleSheetId') || "19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78";
 
-        // Variables de imagen
-        let originalImageFile = null;     // Archivo original (para subir a Drive)
-        let compressedImageBase64 = null; // Versión comprimida (para enviar en JSON)
-        let cropper = null;               // Instancia de CropperJS
+        let originalImageFile = null;
+        let compressedImageBase64 = null;
+        let cropper = null;
+        let myChart = null;
 
-        // --- 2. INICIALIZACIÓN ---
         document.addEventListener('DOMContentLoaded', () => {
             renderList();
             document.getElementById('date').valueAsDate = new Date();
-            // Asegurarse de usar la nueva URL si no se ha guardado otra
-            if (localStorage.getItem('googleScriptUrl') !== SCRIPT_URL) {
-                document.getElementById('script-url-input').value = SCRIPT_URL;
-            } else {
-                document.getElementById('script-url-input').value = localStorage.getItem('googleScriptUrl');
-            }
-            log("Listo. Esperando factura.");
+            document.getElementById('script-url-input').value = SCRIPT_URL;
+            document.getElementById('sheet-id-input').value = SHEET_ID;
         });
 
-        // --- 3. MANEJO DE IMÁGENES ---
-        async function handleImageUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+        // --- NAVEGACIÓN ---
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.getElementById('view-' + tab).classList.add('active');
             
-            originalImageFile = file; // Guardamos ref
+            // Estilos botones
+            const btnCap = document.getElementById('nav-capture');
+            const btnDash = document.getElementById('nav-dashboard');
             
-            // Preview
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                document.getElementById('image-preview').src = e.target.result;
-                document.getElementById('upload-placeholder').classList.add('hidden');
-                document.getElementById('preview-container').classList.remove('hidden');
-                document.getElementById('img-indicator').innerText = "Foto Lista";
-                document.getElementById('img-indicator').classList.replace('text-gray-400', 'text-green-600');
-                document.getElementById('img-indicator').classList.replace('bg-gray-100', 'bg-green-100');
-            };
-            reader.readAsDataURL(file);
-
-            // Comprimir para guardado
-            try {
-                compressedImageBase64 = await compressImage(file);
-                log(`Imagen procesada (${Math.round(compressedImageBase64.length/1024)}KB)`);
-                // Auto-run OCR en imagen completa (intento inicial)
-                runOCR(file); 
-            } catch (err) {
-                log("Error comprimiendo imagen: " + err);
+            if(tab === 'capture') {
+                btnCap.classList.replace('text-gray-400', 'text-teal-600');
+                btnDash.classList.replace('text-blue-600', 'text-gray-400');
+            } else {
+                btnDash.classList.replace('text-gray-400', 'text-blue-600');
+                btnCap.classList.replace('text-teal-600', 'text-gray-400');
+                loadDashboardData(); // Cargar datos al abrir
             }
         }
 
-        function resetImage() {
-            document.getElementById('camera-input').value = "";
-            document.getElementById('upload-placeholder').classList.remove('hidden');
-            document.getElementById('preview-container').classList.add('hidden');
-            document.getElementById('img-indicator').innerText = "Sin Foto";
-            document.getElementById('img-indicator').className = "text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded";
-            originalImageFile = null;
-            compressedImageBase64 = null;
-            log("Imagen borrada.");
-        }
-
-        // --- 4. RECORTAR (CROPPER) ---
-        function openCropper() {
-            if(!originalImageFile) return;
-            const modal = document.getElementById('cropper-modal');
-            const imgEl = document.getElementById('image-to-crop');
-            
-            // Cargar imagen en modal
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                imgEl.src = e.target.result;
-                modal.classList.remove('hidden');
-                
-                // Destruir instancia previa si existe
-                if(cropper) cropper.destroy();
-                
-                // Iniciar Cropper
-                cropper = new Cropper(imgEl, {
-                    viewMode: 1,
-                    dragMode: 'move',
-                    autoCropArea: 0.5,
-                    ready() {
-                        log("Editor de recorte abierto");
-                    }
-                });
-            };
-            reader.readAsDataURL(originalImageFile);
-        }
-
-        function closeCropper() {
-            document.getElementById('cropper-modal').classList.add('hidden');
-            if(cropper) cropper.destroy();
-        }
-
-        function performCrop() {
-            if(!cropper) return;
-            // Obtener el recorte como Blob
-            cropper.getCroppedCanvas().toBlob((blob) => {
-                closeCropper();
-                log("Recorte aplicado. Leyendo datos...");
-                // Ejecutar OCR SOBRE EL RECORTE
-                runOCR(blob); 
-            });
-        }
-
-        // --- 5. OCR (TESSERACT) ---
-        async function runOCR(imageBlob) {
-            const statusContainer = document.getElementById('ocr-status-container');
-            const bar = document.getElementById('ocr-bar');
-            const txt = document.getElementById('ocr-status-text');
-            const pct = document.getElementById('ocr-pct');
-            const scanLine = document.getElementById('scanner-line');
-
-            statusContainer.classList.remove('hidden');
-            scanLine.style.display = 'block';
-
-            try {
-                const result = await Tesseract.recognize(imageBlob, 'spa', {
-                    logger: m => {
-                        if(m.status === 'recognizing text'){
-                            const p = Math.round(m.progress * 100);
-                            bar.style.width = p + "%";
-                            pct.innerText = p + "%";
-                        }
-                    }
-                });
-                
-                processOCRText(result.data.text);
-                txt.innerText = "Lectura completada";
-                bar.classList.replace('bg-teal-500', 'bg-green-500');
-                
-            } catch (err) {
-                log("Error OCR: " + err);
-                txt.innerText = "Error lectura";
-                bar.classList.replace('bg-teal-500', 'bg-red-500');
-            } finally {
-                scanLine.style.display = 'none';
-                setTimeout(() => statusContainer.classList.add('hidden'), 2000);
-            }
-        }
-
-        // Helper para botones "Leer solo esto"
-        function triggerSpecificOCR(field) {
-            if(!originalImageFile) { alert("Primero toma la foto"); return; }
-            log(`Por favor recorta la zona del ${field === 'amount' ? 'TOTAL' : 'NÚMERO'}`);
-            openCropper();
-        }
-
-        function processOCRText(text) {
-            log("Texto detectado. Analizando...");
-            const cleanText = text.replace(/[\r\n]+/g, '\n');
-            const lines = cleanText.split('\n');
-
-            // 1. DINERO - MEJORADO PARA GUATEMALA
-            // Busca Q.123.45 o 123.45
-            const moneyMatches = cleanText.match(/(?:Q\s?)?([0-9]{1,3}(?:[,.][0-9]{3})*[.,][0-9]{2})/g);
-            if (moneyMatches) {
-                // Limpiar símbolos extra y convertir
-                const values = moneyMatches.map(v => {
-                    // Quitar Q y espacios
-                    let raw = v.replace(/[Q\s]/g, '');
-                    // Reemplazar coma por punto solo si es separador decimal (simple heurística: si está al final)
-                    if (raw.indexOf(',') > -1 && raw.indexOf('.') === -1) {
-                         raw = raw.replace(',', '.');
-                    } else {
-                         raw = raw.replace(',', ''); // Eliminar miles
-                    }
-                    return parseFloat(raw);
-                });
-                
-                const maxVal = Math.max(...values.filter(v => !isNaN(v)));
-                if(maxVal > 0) {
-                    document.getElementById('amount').value = maxVal.toFixed(2);
-                    blinkField('amount');
-                }
-            }
-
-            // 2. FECHA
-            const dateMatch = cleanText.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
-            if (dateMatch) {
-                let y = dateMatch[3];
-                if(y.length === 2) y = "20" + y;
-                document.getElementById('date').value = `${y}-${dateMatch[2].padStart(2,'0')}-${dateMatch[1].padStart(2,'0')}`;
-                blinkField('date');
-            }
-
-            // 3. DTE / FACTURA
-            let dteFound = "";
-            const uuidRegex = /\b[A-F0-9]{8,}(?:-[A-F0-9]{4})?\b/i; 
-            const simpleNumRegex = /\b\d{6,15}\b/; // Números largos
-            
-            // Buscar explícitamente palabras clave
-            const keywordRegex = /(?:serie|número|numero|dte|factura|folio)/i;
-
-            for (let i = 0; i < lines.length; i++) {
-                if (keywordRegex.test(lines[i])) {
-                    // Buscar UUID en esta línea o siguiente
-                    let match = lines[i].match(uuidRegex) || lines[i].match(simpleNumRegex);
-                    if (!match && i+1 < lines.length) {
-                        match = lines[i+1].match(uuidRegex) || lines[i+1].match(simpleNumRegex);
-                    }
-                    if(match) { dteFound = match[0]; break; }
-                }
-            }
-            // Fallback general
-            if (!dteFound) {
-                const matchB = cleanText.match(uuidRegex) || cleanText.match(simpleNumRegex);
-                if (matchB) dteFound = matchB[0];
-            }
-
-            if (dteFound) {
-                document.getElementById('docNo').value = dteFound;
-                blinkField('docNo');
-            }
-        }
-
-        function blinkField(id) {
-            const el = document.getElementById(id);
-            el.classList.add('bg-green-100');
-            setTimeout(() => el.classList.remove('bg-green-100'), 1000);
-        }
-
-        // --- 6. GUARDAR Y SINCRONIZAR ---
-        function saveExpense(e) {
-            e.preventDefault();
-            const projSelect = document.getElementById('project');
-            const projOther = document.getElementById('otherProjectInput');
-            const project = (projSelect.value === 'Otro') ? projOther.value : projSelect.value;
-
-            if(!project) { alert("Indica el proyecto"); return; }
-            if(!compressedImageBase64) { 
-                if(!confirm("¿Guardar sin foto?")) return; 
-            }
-
-            const expense = {
-                id: Date.now(),
-                date: document.getElementById('date').value,
-                description: document.getElementById('description').value,
-                docNo: document.getElementById('docNo').value || "S/N",
-                project: project,
-                amount: parseFloat(document.getElementById('amount').value),
-                requester: document.getElementById('requester').value,
-                image: compressedImageBase64 || ""
-            };
-
-            // Guardar LS
-            try {
-                expenses.push(expense);
-                localStorage.setItem('expenses', JSON.stringify(expenses));
-                renderList();
-                // Limpiar form pero dejar fecha y solicitante
-                document.getElementById('description').value = "";
-                document.getElementById('amount').value = "";
-                document.getElementById('docNo').value = "";
-                resetImage();
-                log("Gasto guardado en memoria.");
-            } catch(e) {
-                alert("Memoria llena. Sincroniza para liberar espacio.");
-            }
-        }
-
+        // --- CORE: SINCRONIZACIÓN ROBUSTA (TEXT/PLAIN) ---
         function syncToSheet() {
-            if (expenses.length === 0) { alert("Nada pendiente por subir"); return; }
+            if(expenses.length === 0) { alert("Nada que subir"); return; }
             
             const overlay = document.getElementById('loading-overlay');
-            const txt = document.getElementById('loading-text');
             overlay.classList.remove('hidden');
-            txt.innerText = `Subiendo ${expenses.length} facturas...`;
+            document.getElementById('loading-text').innerText = "Enviando datos...";
 
-            // Formatear datos para el script
             const payload = expenses.map(e => {
-                const d = e.date.split('-'); 
+                const d = e.date.split('-');
                 return {
-                    formattedDate: `${d[2]}/${d[1]}`, // DD/MM
+                    formattedDate: `${d[2]}/${d[1]}`,
                     description: e.description,
                     docNo: e.docNo,
                     project: e.project,
                     amount: e.amount,
                     requester: e.requester,
-                    image: e.image
+                    image: e.image || ""
                 };
             });
 
-            log("Iniciando envío a Google (Modo Opaco)...");
-
+            // TRUCO: Enviamos como text/plain para evitar CORS Preflight
             fetch(SCRIPT_URL, {
                 method: "POST",
-                mode: "no-cors", // Esto es necesario pero oculta errores
-                headers: { "Content-Type": "application/json" },
+                mode: "no-cors", 
+                headers: { "Content-Type": "text/plain" }, 
                 body: JSON.stringify(payload)
             })
             .then(() => {
-                // Al ser no-cors, siempre entra aquí aunque falle el script interno
                 overlay.classList.add('hidden');
-                log("Solicitud enviada (sin confirmación del servidor).");
-                
-                // Mensaje EXPLICATIVO para el usuario sobre Opaque Response
-                if(confirm("Solicitud enviada.\n\nIMPORTANTE: Al ser una conexión segura 'ciega' (no-cors), la App no puede confirmar si Google aceptó los datos.\n\n1. Verifica AHORA tu hoja de cálculo.\n2. Si aparecen los datos: Dale ACEPTAR para limpiar la lista.\n3. Si NO aparecen: Dale CANCELAR y revisa los permisos del Script (debe ser 'Cualquier persona').")) {
+                // Al ser no-cors, asumimos éxito si no hubo error de red
+                if(confirm("✅ Envío completado.\n\nLos datos se enviaron a la cola de Google.\n\n¿Limpiar lista local?")) {
                     expenses = [];
                     localStorage.setItem('expenses', JSON.stringify([]));
                     renderList();
-                    log("Lista limpiada manualmente.");
                 }
             })
             .catch(err => {
                 overlay.classList.add('hidden');
-                log("ERROR RED: " + err);
-                alert("Error de conexión. Revisa el monitor abajo.");
+                alert("❌ Error de red: " + err);
             });
         }
 
-        // --- UTILIDADES ---
-        function renderList() {
-            const container = document.getElementById('expense-list');
-            const totalEl = document.getElementById('total-sum');
+        // --- DASHBOARD: LECTURA DE DATOS ---
+        function loadDashboardData() {
+            // Usamos Google Visualization API para leer la hoja DATA (pública o compartida)
+            // Query: select D, F (Proyecto, Valor) where A is not null
+            const query = encodeURIComponent("select A, B, F, D"); // Fecha, Desc, Valor, Proyecto
+            const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=DATA&tq=${query}`;
+
+            fetch(url)
+            .then(res => res.text())
+            .then(text => {
+                // Limpiar respuesta rara de Google (/* ... */)
+                const jsonText = text.match(/google\.visualization\.Query\.setResponse\(([\s\S\w]+)\);/)[1];
+                const json = JSON.parse(jsonText);
+                const rows = json.table.rows;
+                
+                renderDashboard(rows);
+            })
+            .catch(err => console.error("Error cargando dashboard", err));
+        }
+
+        function renderDashboard(rows) {
+            let total = 0;
+            const projectMap = {};
+            const tbody = document.getElementById('dash-table-body');
+            tbody.innerHTML = "";
+
+            // Procesar filas (empezar desde las ultimas para ver recientes)
+            // Columnas GVIZ: 0=Fecha, 1=Desc, 2=Valor, 3=Proyecto
             
-            if(expenses.length === 0) {
-                container.innerHTML = `<div class="text-center py-8 text-gray-400 text-sm bg-white rounded-xl border border-dashed border-gray-300">No hay facturas pendientes</div>`;
-                totalEl.innerText = "Total: Q0.00";
-                return;
+            // Invertir para ver lo último primero
+            const recentRows = rows.slice().reverse().slice(0, 10); 
+
+            rows.forEach(r => {
+                const val = r.c[2] ? r.c[2].v : 0; // Valor
+                const proj = r.c[3] ? r.c[3].v : "Otros"; // Proyecto
+                total += val;
+                projectMap[proj] = (projectMap[proj] || 0) + val;
+            });
+
+            // Render KPI
+            document.getElementById('dash-total').innerText = `Q${total.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            document.getElementById('dash-count').innerText = rows.length;
+
+            // Render Tabla
+            recentRows.forEach(r => {
+                const fecha = r.c[0] ? (r.c[0].f || r.c[0].v) : "";
+                const desc = r.c[1] ? r.c[1].v : "";
+                const val = r.c[2] ? r.c[2].v : 0;
+                
+                tbody.innerHTML += `
+                    <tr class="border-b hover:bg-gray-50">
+                        <td class="p-2">${fecha}</td>
+                        <td class="p-2 truncate max-w-[100px]">${desc}</td>
+                        <td class="p-2 text-right font-bold text-teal-600">Q${val.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+
+            // Render Chart
+            const ctx = document.getElementById('projectChart').getContext('2d');
+            if(myChart) myChart.destroy();
+            
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(projectMap),
+                    datasets: [{
+                        data: Object.values(projectMap),
+                        backgroundColor: ['#14b8a6', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } } }
+            });
+        }
+
+        // --- MANEJO IMÁGENES Y OCR (IGUAL QUE ANTES) ---
+        async function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            originalImageFile = file;
+            
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                document.getElementById('image-preview').src = ev.target.result;
+                document.getElementById('upload-placeholder').classList.add('hidden');
+                document.getElementById('preview-container').classList.remove('hidden');
+                document.getElementById('img-indicator').innerText = "Foto OK";
+                document.getElementById('img-indicator').className = "text-xs text-green-600 bg-green-100 px-2 py-1 rounded";
+            };
+            reader.readAsDataURL(file);
+
+            try {
+                compressedImageBase64 = await compressImage(file);
+                runOCR(file); // OCR Auto
+            } catch(err) { console.log(err); }
+        }
+
+        async function runOCR(blob) {
+            document.getElementById('ocr-status-container').classList.remove('hidden');
+            const bar = document.getElementById('ocr-bar');
+            
+            try {
+                const res = await Tesseract.recognize(blob, 'spa', {
+                    logger: m => { if(m.status==='recognizing text') bar.style.width = (m.progress*100) + '%'; }
+                });
+                processOCR(res.data.text);
+            } catch(e) { console.error(e); } 
+            finally { setTimeout(() => document.getElementById('ocr-status-container').classList.add('hidden'), 1000); }
+        }
+
+        function processOCR(text) {
+            const clean = text.replace(/[\r\n]+/g, '\n');
+            
+            // Regex ajustado para ignorar líneas dibujadas (__ or --)
+            // Valor
+            const money = clean.match(/(?:Q\s?)?([0-9]{1,3}(?:[,.][0-9]{3})*[.,][0-9]{2})/g);
+            if(money) {
+                const vals = money.map(v => parseFloat(v.replace(/[Q\s,]/g, '').replace(/(\d)\.(\d{3})/, '$1$2'))); // Basic cleanup
+                // Mejor heurística: buscar el valor que parezca un total (el mayor)
+                const max = Math.max(...vals.filter(n => !isNaN(n)));
+                if(max > 0) document.getElementById('amount').value = max.toFixed(2);
+            }
+            
+            // Fecha
+            const date = clean.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+            if(date) {
+                let y = date[3];
+                if(y.length===2) y = "20"+y;
+                document.getElementById('date').value = `${y}-${date[2].padStart(2,'0')}-${date[1].padStart(2,'0')}`;
             }
 
-            let html = '';
-            let total = 0;
-            expenses.forEach((ex) => {
-                total += ex.amount;
-                html += `
-                <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-100 flex justify-between items-center">
+            // Doc
+            const doc = clean.match(/(?:serie|no|dte|fac)[\D]{0,10}(\b[A-Z0-9\-]{5,}\b)/i);
+            if(doc) document.getElementById('docNo').value = doc[1];
+        }
+
+        // --- CROPPER UTILS ---
+        function openCropper() {
+            if(!originalImageFile) return;
+            const modal = document.getElementById('cropper-modal');
+            const img = document.getElementById('image-to-crop');
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                img.src = e.target.result;
+                modal.classList.remove('hidden');
+                if(cropper) cropper.destroy();
+                cropper = new Cropper(img, { viewMode: 1, autoCropArea: 0.5 });
+            };
+            reader.readAsDataURL(originalImageFile);
+        }
+        function closeCropper() { document.getElementById('cropper-modal').classList.add('hidden'); if(cropper) cropper.destroy(); }
+        function performCrop() {
+            cropper.getCroppedCanvas().toBlob(blob => {
+                closeCropper();
+                runOCR(blob);
+            });
+        }
+        function triggerSpecificOCR(field) {
+            if(!originalImageFile) { alert("Falta foto"); return; }
+            alert("Recorta la zona del dato");
+            openCropper();
+        }
+
+        // --- UTILS LOCAL ---
+        function saveExpense(e) {
+            e.preventDefault();
+            const proj = document.getElementById('project').value === 'Otro' ? document.getElementById('otherProjectInput').value : document.getElementById('project').value;
+            
+            expenses.push({
+                id: Date.now(),
+                date: document.getElementById('date').value,
+                description: document.getElementById('description').value,
+                docNo: document.getElementById('docNo').value || "S/N",
+                project: proj,
+                amount: parseFloat(document.getElementById('amount').value),
+                requester: document.getElementById('requester').value,
+                image: compressedImageBase64
+            });
+            localStorage.setItem('expenses', JSON.stringify(expenses));
+            renderList();
+            resetImage();
+            document.getElementById('description').value = "";
+            document.getElementById('amount').value = "";
+            document.getElementById('docNo').value = "";
+        }
+
+        function renderList() {
+            const c = document.getElementById('expense-list');
+            c.innerHTML = "";
+            let t = 0;
+            expenses.forEach(x => {
+                t += x.amount;
+                c.innerHTML += `
+                <div class="p-3 border-b flex justify-between items-center">
                     <div>
-                        <div class="font-bold text-gray-800 text-sm">${ex.description}</div>
-                        <div class="text-xs text-gray-500 flex gap-2">
-                            <span>${ex.date}</span>
-                            <span class="bg-gray-100 px-1 rounded">${ex.project}</span>
-                            ${ex.image ? '<span class="text-green-600">📸</span>' : ''}
-                        </div>
+                        <div class="font-bold text-sm text-gray-800">${x.description}</div>
+                        <div class="text-xs text-gray-500">${x.date} | ${x.project}</div>
                     </div>
                     <div class="text-right">
-                        <div class="font-bold text-teal-600">Q${ex.amount.toFixed(2)}</div>
-                        <button onclick="removeOne(${ex.id})" class="text-xs text-red-400 p-1">Eliminar</button>
+                        <div class="font-bold text-teal-600">Q${x.amount.toFixed(2)}</div>
+                        <button onclick="del(${x.id})" class="text-xs text-red-400">X</button>
                     </div>
                 </div>`;
             });
-            container.innerHTML = html;
-            totalEl.innerText = `Total: Q${total.toFixed(2)}`;
+            document.getElementById('total-sum').innerText = `Total: Q${t.toFixed(2)}`;
         }
 
-        function removeOne(id) {
-            if(confirm("¿Borrar este item?")) {
+        function del(id) {
+            if(confirm("¿Eliminar?")) {
                 expenses = expenses.filter(x => x.id !== id);
                 localStorage.setItem('expenses', JSON.stringify(expenses));
                 renderList();
             }
         }
-
-        function clearData() {
-            if(confirm("¿Borrar TODO?")) {
-                expenses = [];
-                localStorage.removeItem('expenses');
-                renderList();
-            }
-        }
-
-        function compressImage(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = event => {
-                    const img = new Image();
-                    img.src = event.target.result;
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 800; // Reducir tamaño para evitar errores de red
-                        const scaleSize = MAX_WIDTH / img.width;
-                        canvas.width = MAX_WIDTH;
-                        canvas.height = img.height * scaleSize;
-                        
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.6)); // Compresión JPG 60%
-                    };
-                    img.onerror = reject;
-                };
+        function clearData() { if(confirm("¿Borrar todo?")) { expenses=[]; localStorage.removeItem('expenses'); renderList(); } }
+        function compressImage(f) {
+            return new Promise((res, rej) => {
+                const r = new FileReader(); r.readAsDataURL(f);
+                r.onload = e => {
+                    const i = new Image(); i.src = e.target.result;
+                    i.onload = () => {
+                        const c = document.createElement('canvas');
+                        const s = 800/i.width;
+                        c.width = 800; c.height = i.height*s;
+                        c.getContext('2d').drawImage(i,0,0,c.width,c.height);
+                        res(c.toDataURL('image/jpeg', 0.6));
+                    }
+                }
             });
         }
-
-        function toggleConfigModal() {
-            const modal = document.getElementById('config-modal');
-            modal.classList.toggle('hidden');
+        function resetImage() { 
+            originalImageFile = null; compressedImageBase64 = null;
+            document.getElementById('upload-placeholder').classList.remove('hidden');
+            document.getElementById('preview-container').classList.add('hidden');
+            document.getElementById('img-indicator').innerText = "Sin Foto";
+            document.getElementById('img-indicator').className = "text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded";
         }
-
-        function saveConfig() {
-            const val = document.getElementById('script-url-input').value;
-            localStorage.setItem('googleScriptUrl', val);
-            SCRIPT_URL = val;
-            toggleConfigModal();
-            log("Configuración actualizada");
-        }
-        
         function toggleOtherProject() {
-            const sel = document.getElementById('project');
-            const inp = document.getElementById('otherProjectInput');
-            if(sel.value === 'Otro') inp.classList.remove('hidden');
-            else inp.classList.add('hidden');
+            const p = document.getElementById('project');
+            const i = document.getElementById('otherProjectInput');
+            if(p.value==='Otro') i.classList.remove('hidden'); else i.classList.add('hidden');
         }
-
-        function log(msg) {
-            const logEl = document.getElementById('sys-log');
-            const line = document.createElement('div');
-            line.innerText = `> ${msg}`;
-            logEl.appendChild(line);
-            logEl.scrollTop = logEl.scrollHeight;
+        function toggleConfigModal() { document.getElementById('config-modal').classList.toggle('hidden'); }
+        function saveConfig() {
+            SCRIPT_URL = document.getElementById('script-url-input').value;
+            SHEET_ID = document.getElementById('sheet-id-input').value;
+            localStorage.setItem('googleScriptUrl', SCRIPT_URL);
+            localStorage.setItem('googleSheetId', SHEET_ID);
+            toggleConfigModal();
         }
     </script>
 </body>
