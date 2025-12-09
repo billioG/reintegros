@@ -8,8 +8,12 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Tesseract.js -->
+    <!-- Tesseract.js (OCR) -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+
+    <!-- Cropper.js (Recorte de imágenes) -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
     <!-- Google Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
@@ -24,8 +28,7 @@
         /* Animaciones */
         @keyframes scan {
             0% { top: 0%; opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
+            50% { opacity: 1; }
             100% { top: 100%; opacity: 0; }
         }
         
@@ -33,407 +36,279 @@
             position: absolute;
             width: 100%;
             height: 2px;
-            background: #0ea5e9;
-            box-shadow: 0 0 10px #0ea5e9;
-            animation: scan 2s infinite linear;
+            background: #ef4444; /* Rojo láser */
+            box-shadow: 0 0 10px #ef4444;
+            animation: scan 1.5s infinite linear;
             display: none;
+            z-index: 10;
         }
 
-        .loader {
-            border-top-color: #0ea5e9;
-            animation: spinner 1.5s linear infinite;
-        }
-
-        @keyframes spinner {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        /* Modal Transitions */
-        .modal {
-            transition: opacity 0.25s ease;
-        }
-        body.modal-active {
-            overflow: hidden;
-        }
-
+        /* Ocultar input file */
         input[type="file"] { display: none; }
+
+        /* Estilos Cropper en Modal */
+        .cropper-container {
+            max-height: 70vh !important;
+        }
     </style>
 </head>
-<body class="pb-32"> <!-- Aumentado padding bottom para barra de 3 botones -->
+<body class="pb-40 bg-gray-100">
 
     <!-- Header -->
-    <header class="bg-teal-600 text-white p-4 shadow-md sticky top-0 z-50">
+    <header class="bg-gray-900 text-white p-4 shadow-lg sticky top-0 z-50">
         <div class="flex justify-between items-center max-w-2xl mx-auto">
-            <h1 class="text-lg font-bold flex items-center gap-2">
+            <h1 class="text-lg font-bold flex items-center gap-2 text-teal-400">
                 <span class="material-icons-round">receipt_long</span>
-                Reintegro de Gastos
+                Reintegros v3.0
             </h1>
             <div class="flex items-center gap-3">
-                <button onclick="toggleConfigModal()" class="text-white hover:bg-teal-700 rounded-full p-1 transition">
+                <button onclick="toggleConfigModal()" class="text-gray-400 hover:text-white transition">
                     <span class="material-icons-round">settings</span>
                 </button>
-                <div class="text-xs opacity-80 bg-teal-700 px-2 py-1 rounded">
-                    v2.4
-                </div>
             </div>
         </div>
     </header>
 
-    <main class="max-w-2xl mx-auto p-4">
+    <main class="max-w-2xl mx-auto p-4 space-y-4">
 
-        <!-- Sección de Cámara -->
-        <div class="bg-white rounded-xl shadow-sm p-6 mb-6 text-center border-2 border-dashed border-gray-300 relative overflow-hidden" id="camera-section">
-            <div class="scanner-line" id="scanner-line"></div>
+        <!-- 1. CÁMARA / FOTO -->
+        <div class="bg-white rounded-xl shadow p-4 border border-gray-200">
             
-            <div id="preview-container" class="hidden mb-4 relative">
-                <img id="image-preview" class="mx-auto max-h-64 rounded-lg shadow-md object-contain" alt="Vista previa factura">
-                <button onclick="resetImage()" class="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full shadow hover:bg-red-600 transition">
-                    <span class="material-icons-round text-sm">close</span>
-                </button>
-                <div class="absolute bottom-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                    <span id="img-size-info">0 KB</span>
-                </div>
-            </div>
-
-            <div id="upload-placeholder">
+            <!-- Estado Inicial -->
+            <div id="upload-placeholder" class="text-center py-6">
                 <div class="bg-teal-50 text-teal-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <span class="material-icons-round text-3xl">add_a_photo</span>
+                    <span class="material-icons-round text-3xl">camera_alt</span>
                 </div>
-                <h2 class="text-gray-800 font-medium mb-1">Escanear DTE / Factura</h2>
-                <p class="text-gray-500 text-sm mb-4">Captura Fecha, DTE No. y Total</p>
-                
-                <label for="camera-input" class="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-full font-semibold shadow-lg active:scale-95 transition cursor-pointer hover:bg-teal-700">
-                    <span class="material-icons-round">camera_alt</span>
+                <h2 class="text-gray-800 font-bold">Nueva Factura</h2>
+                <p class="text-gray-500 text-sm mb-4">Toma una foto clara del documento</p>
+                <label for="camera-input" class="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-full font-bold shadow-lg active:scale-95 transition cursor-pointer hover:bg-teal-700">
                     Abrir Cámara
                 </label>
                 <input type="file" id="camera-input" accept="image/*" capture="environment" onchange="handleImageUpload(event)">
             </div>
 
-            <!-- OCR Loading -->
-            <div id="ocr-loading" class="hidden mt-4">
-                <div class="flex justify-center items-center gap-3">
-                    <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6"></div>
-                    <span class="text-sm text-gray-600 font-medium" id="ocr-status-text">Analizando imagen...</span>
+            <!-- Vista Previa de la Imagen Cargada -->
+            <div id="preview-container" class="hidden relative">
+                <div class="relative rounded-lg overflow-hidden bg-gray-900 mb-3" style="min-height: 200px;">
+                    <div class="scanner-line" id="scanner-line"></div>
+                    <img id="image-preview" class="w-full object-contain mx-auto max-h-[400px]" alt="Preview">
                 </div>
-                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-3">
-                    <div class="bg-teal-600 h-1.5 rounded-full" id="ocr-progress" style="width: 0%"></div>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="openCropper()" class="bg-indigo-100 text-indigo-700 py-2 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:bg-indigo-200">
+                        <span class="material-icons-round text-sm">crop</span>
+                        Recortar / Mejorar
+                    </button>
+                    <button onclick="resetImage()" class="bg-red-100 text-red-700 py-2 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-200">
+                        <span class="material-icons-round text-sm">delete</span>
+                        Borrar
+                    </button>
+                </div>
+                
+                <!-- Barra de Progreso OCR -->
+                <div id="ocr-status-container" class="hidden mt-3">
+                    <div class="flex justify-between text-xs font-bold text-gray-500 mb-1">
+                        <span id="ocr-status-text">Leyendo...</span>
+                        <span id="ocr-pct">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="bg-teal-500 h-2 rounded-full transition-all duration-300" id="ocr-bar" style="width: 0%"></div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Formulario -->
-        <form id="expense-form" class="bg-white rounded-xl shadow-sm p-5 space-y-4" onsubmit="saveExpense(event)">
-            <h3 class="text-gray-800 font-bold border-b pb-2 mb-2 flex items-center gap-2">
-                <span class="material-icons-round text-teal-600">edit_note</span>
-                Detalles del Reintegro
-            </h3>
+        <!-- 2. DATOS DE LA FACTURA -->
+        <form id="expense-form" class="bg-white rounded-xl shadow p-5 space-y-4 border border-gray-200" onsubmit="saveExpense(event)">
+            <div class="flex items-center justify-between border-b pb-2">
+                <h3 class="font-bold text-gray-700 flex items-center gap-2">
+                    <span class="material-icons-round text-teal-600">edit</span>
+                    Datos
+                </h3>
+                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded" id="img-indicator">Sin Foto</span>
+            </div>
 
-            <!-- Fila: Fecha y Doc No -->
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-2 gap-3">
+                <!-- Fecha -->
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Fecha</label>
-                    <input type="date" id="date" required class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha</label>
+                    <input type="date" id="date" required class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm font-medium focus:ring-2 focus:ring-teal-500 outline-none">
                 </div>
+                <!-- Doc No -->
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Doc. No. / DTE</label>
-                    <input type="text" id="docNo" placeholder="Ej: 89E129EE..." class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5 font-mono text-sm">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">No. DTE / Fac</label>
+                    <div class="flex gap-1">
+                        <input type="text" id="docNo" placeholder="---" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm font-mono focus:ring-2 focus:ring-teal-500 outline-none">
+                        <button type="button" onclick="triggerSpecificOCR('docNo')" class="bg-gray-200 text-gray-600 rounded-lg px-2 hover:bg-gray-300" title="Leer solo esto">
+                            <span class="material-icons-round text-sm">center_focus_weak</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
             <!-- Descripción -->
             <div>
-                <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Descripción del Gasto</label>
-                <input type="text" id="description" required placeholder="Ej: Compra de materiales..." class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label>
+                <input type="text" id="description" required placeholder="Ej: Almuerzo equipo..." class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-teal-500 outline-none">
             </div>
 
             <!-- Proyecto y Solicitante -->
-            <div class="grid grid-cols-2 gap-4">
-                <div class="flex flex-col gap-2">
-                    <label class="block text-xs font-bold text-gray-500 uppercase">Proyecto</label>
-                    <!-- Select Principal -->
-                    <select id="project" onchange="toggleOtherProject()" class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+            <div class="grid grid-cols-2 gap-3">
+                <div class="flex flex-col">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Proyecto</label>
+                    <select id="project" onchange="toggleOtherProject()" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-teal-500 outline-none">
                         <option value="1bot">1bot</option>
                         <option value="BI">BI</option>
                         <option value="ATT">ATT</option>
                         <option value="Admin">Administración</option>
                         <option value="Otro">Otro...</option>
                     </select>
-                    <!-- Input oculto para "Otro" -->
-                    <input type="text" id="otherProjectInput" placeholder="Especifique proyecto" class="hidden w-full bg-white border border-teal-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5 text-sm animate-fade-in">
+                    <input type="text" id="otherProjectInput" placeholder="Nombre proyecto" class="hidden mt-2 w-full bg-white border border-teal-300 rounded-lg p-2 text-sm">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Solicitante</label>
-                    <input type="text" id="requester" value="Billy" class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Solicitante</label>
+                    <input type="text" id="requester" value="Billy" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-teal-500 outline-none">
                 </div>
             </div>
 
-            <!-- Valor Total -->
+            <!-- Total -->
             <div>
-                <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Valor Total (Q)</label>
-                <div class="relative">
-                    <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                        <span class="text-gray-500 font-bold">Q</span>
-                    </div>
-                    <input type="number" id="amount" step="0.01" required placeholder="0.00" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-lg font-bold rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5 pl-8">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Valor Total (Q)</label>
+                <div class="relative flex items-center">
+                    <span class="absolute left-3 text-gray-500 font-bold">Q</span>
+                    <input type="number" id="amount" step="0.01" required placeholder="0.00" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 pl-8 text-xl font-bold text-gray-800 focus:ring-2 focus:ring-teal-500 outline-none">
+                    <button type="button" onclick="triggerSpecificOCR('amount')" class="absolute right-2 bg-gray-200 text-gray-600 rounded-lg p-1.5 hover:bg-gray-300" title="Leer solo precio">
+                        <span class="material-icons-round text-sm">paid</span>
+                    </button>
                 </div>
             </div>
 
-            <!-- Botón Guardar -->
-            <button type="submit" class="w-full text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:ring-teal-300 font-medium rounded-lg text-sm px-5 py-3.5 text-center flex justify-center items-center gap-2 shadow-lg mt-2 transition-all">
+            <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-95 transition flex justify-center items-center gap-2">
                 <span class="material-icons-round">save</span>
-                Guardar Registro
+                Guardar Factura
             </button>
         </form>
 
-        <!-- Historial -->
-        <div class="mt-8 mb-24">
-            <div class="flex justify-between items-end mb-4">
-                <h3 class="text-lg font-bold text-gray-800">Registros Pendientes</h3>
-                <button onclick="clearData()" class="text-xs text-red-500 underline">Limpiar todo</button>
+        <!-- 3. LISTADO Y SINCRONIZACIÓN -->
+        <div class="space-y-2 pb-8">
+             <div class="flex justify-between items-end px-1">
+                <h3 class="font-bold text-gray-600">Pendientes de Subir</h3>
+                <button onclick="clearData()" class="text-xs text-red-400 hover:text-red-600 underline">Borrar lista</button>
             </div>
-
-            <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 mb-4">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left text-gray-500">
-                        <thead class="text-xs text-gray-700 uppercase bg-gray-100">
-                            <tr>
-                                <th scope="col" class="px-3 py-3">Fecha</th>
-                                <th scope="col" class="px-3 py-3">Desc.</th>
-                                <th scope="col" class="px-3 py-3 text-right">Valor</th>
-                                <th scope="col" class="px-2 py-3"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="expense-list">
-                            <tr><td colspan="4" class="text-center py-4 text-gray-400">Sin registros</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="bg-gray-50 px-4 py-2 border-t text-right font-bold text-gray-700" id="total-sum">
-                    Total: Q0.00
+            
+            <div id="expense-list" class="space-y-3">
+                <!-- Items inyectados por JS -->
+                <div class="text-center py-8 text-gray-400 text-sm bg-white rounded-xl border border-dashed border-gray-300">
+                    No hay facturas pendientes
                 </div>
             </div>
             
+            <div id="total-sum" class="text-right font-bold text-gray-800 px-2">Total: Q0.00</div>
+        </div>
+        
+        <!-- MONITOR DE ESTADO (CONSOLE LOG VISUAL) -->
+        <div class="bg-black bg-opacity-80 text-green-400 font-mono text-xs p-3 rounded-lg mt-4 overflow-hidden">
+            <div class="font-bold text-white border-b border-gray-600 pb-1 mb-1">Monitor del Sistema:</div>
+            <div id="sys-log" class="h-16 overflow-y-auto space-y-1">
+                <div>> Sistema iniciado...</div>
+            </div>
         </div>
 
     </main>
 
-    <!-- Barra Inferior de Sincronización (Sticky) -->
-    <div class="fixed bottom-0 left-0 right-0 bg-white border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] p-3 z-40">
+    <!-- BARRA INFERIOR -->
+    <div class="fixed bottom-0 w-full bg-white border-t border-gray-200 p-3 shadow-lg z-40">
         <div class="max-w-2xl mx-auto flex gap-2">
-             <button onclick="exportToCSV()" class="flex-1 bg-gray-100 text-gray-700 font-medium py-3 rounded-lg flex flex-col justify-center items-center gap-1 active:bg-gray-200 transition text-xs">
-                <span class="material-icons-round text-gray-500 text-base">file_download</span>
-                CSV
-            </button>
-            <button onclick="openSheet()" class="flex-1 bg-blue-50 text-blue-700 font-medium py-3 rounded-lg flex flex-col justify-center items-center gap-1 active:bg-blue-100 transition text-xs border border-blue-100">
-                <span class="material-icons-round text-base">open_in_new</span>
+            <button onclick="window.open('https://docs.google.com/spreadsheets/d/19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78/edit?gid=230086021#gid=230086021', '_blank')" class="flex-1 bg-blue-50 text-blue-600 py-3 rounded-lg font-bold text-sm flex flex-col items-center justify-center leading-none border border-blue-100">
+                <span class="material-icons-round mb-1">table_view</span>
                 Ver Hoja
             </button>
-            <button onclick="syncToSheet()" id="btn-sync" class="flex-[2] bg-green-600 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 shadow-lg hover:bg-green-700 active:scale-95 transition text-sm">
-                <span class="material-icons-round">sync</span>
-                Sincronizar
+            <button onclick="syncToSheet()" id="btn-sync" class="flex-[2] bg-green-600 text-white py-3 rounded-lg font-bold text-base shadow-lg flex items-center justify-center gap-2 active:bg-green-700">
+                <span class="material-icons-round">cloud_upload</span>
+                Sincronizar Ahora
             </button>
         </div>
     </div>
 
-    <!-- Modal Configuración -->
-    <div id="config-modal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-[60]">
-        <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50" onclick="toggleConfigModal()"></div>
-        
-        <div class="modal-container bg-white w-11/12 max-w-md mx-auto rounded-xl shadow-2xl z-50 overflow-y-auto animate-bounce-in">
-            <div class="modal-content py-4 text-left px-6">
-                <!--Title-->
-                <div class="flex justify-between items-center pb-3 border-b mb-4">
-                    <p class="text-xl font-bold text-gray-800">Configuración</p>
-                    <div class="cursor-pointer z-50" onclick="toggleConfigModal()">
-                        <span class="material-icons-round text-gray-500">close</span>
-                    </div>
-                </div>
+    <!-- MODAL DE RECORTE (CROPPER) -->
+    <div id="cropper-modal" class="fixed inset-0 bg-black bg-opacity-90 z-[60] hidden flex flex-col">
+        <div class="flex-1 overflow-hidden relative bg-black flex items-center justify-center p-4">
+            <img id="image-to-crop" class="max-w-full max-h-full">
+        </div>
+        <div class="bg-gray-900 p-4 flex justify-between gap-4">
+            <button onclick="closeCropper()" class="flex-1 bg-gray-700 text-white py-3 rounded-lg font-bold">Cancelar</button>
+            <button onclick="performCrop()" class="flex-1 bg-white text-black py-3 rounded-lg font-bold flex justify-center items-center gap-2">
+                <span class="material-icons-round">check</span>
+                Leer Recorte
+            </button>
+        </div>
+    </div>
 
-                <!--Body-->
-                <div class="mb-4">
-                    <label class="block text-sm font-bold text-gray-700 mb-2">URL del Google Apps Script</label>
-                    <p class="text-xs text-gray-500 mb-2">
-                        Pega aquí la URL de la aplicación web implementada (termina en <code>/exec</code>).
-                        <br><span class="text-red-500 font-semibold">*No pegues la URL de la hoja de cálculo.</span>
-                    </p>
-                    <input type="text" id="script-url-input" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-teal-500 focus:border-teal-500" placeholder="https://script.google.com/macros/s/...">
-                </div>
-
-                <!--Footer-->
-                <div class="flex justify-end pt-2">
-                    <button onclick="saveConfig()" class="px-4 py-2 bg-teal-600 p-3 rounded-lg text-white hover:bg-teal-700 font-bold w-full">Guardar Configuración</button>
-                </div>
+    <!-- MODAL CONFIG -->
+    <div id="config-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[70] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-5 animate-bounce-in">
+            <h3 class="font-bold text-lg mb-3">Configuración</h3>
+            <label class="block text-xs font-bold text-gray-500 mb-1">URL Script (Google Apps Script)</label>
+            <input type="text" id="script-url-input" class="w-full bg-gray-50 border rounded p-2 text-xs font-mono mb-4">
+            <div class="flex justify-end gap-2">
+                <button onclick="toggleConfigModal()" class="px-4 py-2 text-gray-500">Cerrar</button>
+                <button onclick="saveConfig()" class="px-4 py-2 bg-teal-600 text-white rounded font-bold">Guardar</button>
             </div>
         </div>
     </div>
-
-    <!-- Toast -->
-    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-3 rounded-lg shadow-xl text-sm transition-opacity duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-3 w-max max-w-[90%]">
-        <span class="material-icons-round text-green-400">check_circle</span>
-        <span id="toast-message">Mensaje</span>
-    </div>
-
-    <!-- Loading Overlay para Sincronización -->
-    <div id="sync-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-[70] hidden flex flex-col justify-center items-center">
+    
+    <!-- OVERLAY CARGA -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-80 z-[80] hidden flex flex-col items-center justify-center text-white">
         <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
-        <p class="text-white font-bold text-lg animate-pulse" id="sync-status">Sincronizando...</p>
+        <p id="loading-text" class="font-bold animate-pulse">Procesando...</p>
     </div>
 
     <script>
-        // --- CONFIGURACIÓN ---
+        // --- 1. ESTADO GLOBAL ---
         let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
-        // URL ACTUALIZADA POR EL USUARIO
-        const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzb2303oJU_uneHezhd4H7UmPZvfGbDebrsCC-yCSUPTawbnC7YJYUNfYtP0z7RY_mH/exec";
-        
-        
-        // Usar la guardada o la default
-        let SCRIPT_URL = localStorage.getItem('googleScriptUrl') || DEFAULT_SCRIPT_URL;
-        
-        let currentImageCompressed = null; // Almacena la imagen actual en memoria
-        
-        // URL Específica solicitada por el usuario para visualización
-        const SHEET_VIEW_URL = "https://docs.google.com/spreadsheets/d/19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78/edit?gid=230086021#gid=230086021";
+        const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbwjBVAORS4MaYrj1sETqI1IY20lypxpWQMBxm5U5az4b4GPkXQ5Syo-ETNhAX3V1fqz/exec";
+        let SCRIPT_URL = localStorage.getItem('googleScriptUrl') || DEFAULT_URL;
 
+        // Variables de imagen
+        let originalImageFile = null;     // Archivo original (para subir a Drive)
+        let compressedImageBase64 = null; // Versión comprimida (para enviar en JSON)
+        let cropper = null;               // Instancia de CropperJS
+
+        // --- 2. INICIALIZACIÓN ---
         document.addEventListener('DOMContentLoaded', () => {
             renderList();
             document.getElementById('date').valueAsDate = new Date();
-            // Mostrar la URL actual en el input
             document.getElementById('script-url-input').value = SCRIPT_URL;
+            log("Listo. Esperando factura.");
         });
 
-        // --- FUNCIONES NUEVAS ---
-        function openSheet() {
-            window.open(SHEET_VIEW_URL, '_blank');
-        }
-
-        // --- LÓGICA DE CONFIGURACIÓN ---
-        function toggleConfigModal() {
-            const modal = document.getElementById('config-modal');
-            const body = document.querySelector('body');
-            
-            modal.classList.toggle('opacity-0');
-            modal.classList.toggle('pointer-events-none');
-            body.classList.toggle('modal-active');
-        }
-
-        function saveConfig() {
-            const url = document.getElementById('script-url-input').value.trim();
-            
-            // Validación inteligente: Si el usuario pega la URL de docs.google.com en vez del script
-            if (url.includes("docs.google.com") || url.includes("spreadsheets")) {
-                alert("¡Atención!\n\nHas pegado la URL de la Hoja de Cálculo.\n\nPara que la sincronización automática funcione, necesitas la URL del 'Script' que generaste (termina en /exec).\n\nLa URL de la hoja ya está configurada en el botón 'Ver Hoja'.");
-                return;
-            }
-
-            if(url) {
-                localStorage.setItem('googleScriptUrl', url);
-                SCRIPT_URL = url;
-                showToast("Configuración guardada");
-                toggleConfigModal();
-            } else {
-                showToast("La URL no puede estar vacía", true);
-            }
-        }
-
-        function toggleOtherProject() {
-            const select = document.getElementById('project');
-            const input = document.getElementById('otherProjectInput');
-            if (select.value === 'Otro') {
-                input.classList.remove('hidden');
-                input.focus();
-                input.required = true;
-            } else {
-                input.classList.add('hidden');
-                input.required = false;
-            }
-        }
-
-        // --- MANEJO DE IMAGEN Y COMPRESIÓN ---
+        // --- 3. MANEJO DE IMÁGENES ---
         async function handleImageUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
-
-            // 1. Mostrar preview inmediato
+            
+            originalImageFile = file; // Guardamos ref
+            
+            // Preview
             const reader = new FileReader();
-            reader.onload = e => {
+            reader.onload = (e) => {
                 document.getElementById('image-preview').src = e.target.result;
                 document.getElementById('upload-placeholder').classList.add('hidden');
                 document.getElementById('preview-container').classList.remove('hidden');
-            }
+                document.getElementById('img-indicator').innerText = "Foto Lista";
+                document.getElementById('img-indicator').classList.replace('text-gray-400', 'text-green-600');
+                document.getElementById('img-indicator').classList.replace('bg-gray-100', 'bg-green-100');
+            };
             reader.readAsDataURL(file);
 
-            // 2. Comprimir imagen para almacenamiento y envío
+            // Comprimir para guardado
             try {
-                const compressedBase64 = await compressImage(file);
-                currentImageCompressed = compressedBase64;
-                
-                // Mostrar tamaño aproximado
-                const sizeKB = Math.round((compressedBase64.length * 3 / 4) / 1024);
-                document.getElementById('img-size-info').innerText = sizeKB + ' KB';
-
-                // 3. Iniciar OCR sobre la imagen
+                compressedImageBase64 = await compressImage(file);
+                log(`Imagen procesada (${Math.round(compressedImageBase64.length/1024)}KB)`);
+                // Auto-run OCR en imagen completa (intento inicial)
                 runOCR(file); 
-
             } catch (err) {
-                console.error("Error comprimiendo", err);
-                showToast("Error procesando imagen", true);
-            }
-        }
-
-        // Función Helper para redimensionar imágenes (Canvas)
-        function compressImage(file) {
-            return new Promise((resolve, reject) => {
-                const maxWidth = 800; // Ancho máximo para no saturar localStorage
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = event => {
-                    const img = new Image();
-                    img.src = event.target.result;
-                    img.onload = () => {
-                        const elem = document.createElement('canvas');
-                        let width = img.width;
-                        let height = img.height;
-
-                        if (width > maxWidth) {
-                            height = Math.round(height * (maxWidth / width));
-                            width = maxWidth;
-                        }
-
-                        elem.width = width;
-                        elem.height = height;
-                        const ctx = elem.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-                        
-                        // Retorna base64 JPEG calidad 0.6
-                        resolve(elem.toDataURL('image/jpeg', 0.6));
-                    };
-                    img.onerror = error => reject(error);
-                };
-            });
-        }
-
-        async function runOCR(file) {
-            document.getElementById('ocr-loading').classList.remove('hidden');
-            document.getElementById('scanner-line').style.display = 'block';
-
-            try {
-                const result = await Tesseract.recognize(file, 'spa', {
-                    logger: m => {
-                        if(m.status === 'recognizing text'){
-                            const pct = Math.round(m.progress * 100);
-                            document.getElementById('ocr-progress').style.width = pct + '%';
-                            document.getElementById('ocr-status-text').innerText = `Analizando... ${pct}%`;
-                        }
-                    }
-                });
-                processOCRText(result.data.text);
-            } catch (error) {
-                console.error(error);
-                showToast("No se pudo leer la imagen automáticamente.", true);
-            } finally {
-                document.getElementById('ocr-loading').classList.add('hidden');
-                document.getElementById('scanner-line').style.display = 'none';
+                log("Error comprimiendo imagen: " + err);
             }
         }
 
@@ -441,248 +316,350 @@
             document.getElementById('camera-input').value = "";
             document.getElementById('upload-placeholder').classList.remove('hidden');
             document.getElementById('preview-container').classList.add('hidden');
-            document.getElementById('expense-form').reset();
-            document.getElementById('date').valueAsDate = new Date();
-            toggleOtherProject(); 
-            document.getElementById('ocr-progress').style.width = '0%';
-            currentImageCompressed = null;
+            document.getElementById('img-indicator').innerText = "Sin Foto";
+            document.getElementById('img-indicator').className = "text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded";
+            originalImageFile = null;
+            compressedImageBase64 = null;
+            log("Imagen borrada.");
+        }
+
+        // --- 4. RECORTAR (CROPPER) ---
+        function openCropper() {
+            if(!originalImageFile) return;
+            const modal = document.getElementById('cropper-modal');
+            const imgEl = document.getElementById('image-to-crop');
+            
+            // Cargar imagen en modal
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imgEl.src = e.target.result;
+                modal.classList.remove('hidden');
+                
+                // Destruir instancia previa si existe
+                if(cropper) cropper.destroy();
+                
+                // Iniciar Cropper
+                cropper = new Cropper(imgEl, {
+                    viewMode: 1,
+                    dragMode: 'move',
+                    autoCropArea: 0.5,
+                    ready() {
+                        log("Editor de recorte abierto");
+                    }
+                });
+            };
+            reader.readAsDataURL(originalImageFile);
+        }
+
+        function closeCropper() {
+            document.getElementById('cropper-modal').classList.add('hidden');
+            if(cropper) cropper.destroy();
+        }
+
+        function performCrop() {
+            if(!cropper) return;
+            // Obtener el recorte como Blob
+            cropper.getCroppedCanvas().toBlob((blob) => {
+                closeCropper();
+                log("Recorte aplicado. Leyendo datos...");
+                // Ejecutar OCR SOBRE EL RECORTE
+                runOCR(blob); 
+            });
+        }
+
+        // --- 5. OCR (TESSERACT) ---
+        async function runOCR(imageBlob) {
+            const statusContainer = document.getElementById('ocr-status-container');
+            const bar = document.getElementById('ocr-bar');
+            const txt = document.getElementById('ocr-status-text');
+            const pct = document.getElementById('ocr-pct');
+            const scanLine = document.getElementById('scanner-line');
+
+            statusContainer.classList.remove('hidden');
+            scanLine.style.display = 'block';
+
+            try {
+                const result = await Tesseract.recognize(imageBlob, 'spa', {
+                    logger: m => {
+                        if(m.status === 'recognizing text'){
+                            const p = Math.round(m.progress * 100);
+                            bar.style.width = p + "%";
+                            pct.innerText = p + "%";
+                        }
+                    }
+                });
+                
+                processOCRText(result.data.text);
+                txt.innerText = "Lectura completada";
+                bar.classList.replace('bg-teal-500', 'bg-green-500');
+                
+            } catch (err) {
+                log("Error OCR: " + err);
+                txt.innerText = "Error lectura";
+                bar.classList.replace('bg-teal-500', 'bg-red-500');
+            } finally {
+                scanLine.style.display = 'none';
+                setTimeout(() => statusContainer.classList.add('hidden'), 2000);
+            }
+        }
+
+        // Helper para botones "Leer solo esto"
+        function triggerSpecificOCR(field) {
+            if(!originalImageFile) { alert("Primero toma la foto"); return; }
+            log(`Por favor recorta la zona del ${field === 'amount' ? 'TOTAL' : 'NÚMERO'}`);
+            openCropper();
         }
 
         function processOCRText(text) {
-            console.log("OCR RAW:", text);
-            const cleanText = text.replace(/[\r\n]+/g, '\n'); 
+            log("Texto detectado. Analizando...");
+            const cleanText = text.replace(/[\r\n]+/g, '\n');
             const lines = cleanText.split('\n');
 
-            // 1. Total (Busca montos con Q o al final)
+            // 1. DINERO
             const moneyMatches = cleanText.match(/[0-9]{1,3}(?:[,.][0-9]{3})*[.,][0-9]{2}/g);
             if (moneyMatches) {
                 const values = moneyMatches.map(v => parseFloat(v.replace(/,/g, ''))); 
                 const maxVal = Math.max(...values.filter(v => !isNaN(v)));
-                if(maxVal > 0) document.getElementById('amount').value = maxVal.toFixed(2);
+                if(maxVal > 0) {
+                    document.getElementById('amount').value = maxVal.toFixed(2);
+                    blinkField('amount');
+                }
             }
-            
-            // 2. Fecha
+
+            // 2. FECHA
             const dateMatch = cleanText.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
             if (dateMatch) {
                 let y = dateMatch[3];
                 if(y.length === 2) y = "20" + y;
                 document.getElementById('date').value = `${y}-${dateMatch[2].padStart(2,'0')}-${dateMatch[1].padStart(2,'0')}`;
+                blinkField('date');
             }
-            
-            // 3. DTE (Lógica mejorada: Busca "Serie" y mira la línea SIGUIENTE)
+
+            // 3. DTE / FACTURA
             let dteFound = "";
-            const uuidRegex = /\b[A-F0-9]{8,}(?:-[A-F0-9]{4})?\b/i; // Patrón UUID
-            const keywordRegex = /(?:serie|número|numero|dte|factura)/i;
+            const uuidRegex = /\b[A-F0-9]{8,}(?:-[A-F0-9]{4})?\b/i; 
+            const simpleNumRegex = /\b\d{6,15}\b/; // Números largos
+            
+            // Buscar explícitamente palabras clave
+            const keywordRegex = /(?:serie|número|numero|dte|factura|folio)/i;
 
             for (let i = 0; i < lines.length; i++) {
-                // Si la línea actual contiene la palabra clave
                 if (keywordRegex.test(lines[i])) {
-                    // Primero, buscar en la MISMA línea si está separado por :
-                    let matchSameLine = lines[i].match(uuidRegex);
-                    if (matchSameLine && matchSameLine[0].length > 6) {
-                         dteFound = matchSameLine[0];
-                         break;
+                    // Buscar UUID en esta línea o siguiente
+                    let match = lines[i].match(uuidRegex) || lines[i].match(simpleNumRegex);
+                    if (!match && i+1 < lines.length) {
+                        match = lines[i+1].match(uuidRegex) || lines[i+1].match(simpleNumRegex);
                     }
-                    
-                    // Si no, buscar en la línea SIGUIENTE (i+1)
-                    if (i + 1 < lines.length) {
-                        let nextLine = lines[i + 1];
-                        let matchNextLine = nextLine.match(uuidRegex);
-                        if (matchNextLine) {
-                            dteFound = matchNextLine[0];
-                            break;
-                        }
-                    }
+                    if(match) { dteFound = match[0]; break; }
                 }
             }
-
-            // Fallback: Si no se encontró con el método de "línea siguiente", buscar cualquier UUID en todo el texto
+            // Fallback general
             if (!dteFound) {
-                 const matchB = cleanText.match(uuidRegex);
-                 if (matchB) dteFound = matchB[0];
+                const matchB = cleanText.match(uuidRegex) || cleanText.match(simpleNumRegex);
+                if (matchB) dteFound = matchB[0];
             }
 
             if (dteFound) {
                 document.getElementById('docNo').value = dteFound;
-                showToast("¡DTE detectado!");
+                blinkField('docNo');
             }
         }
 
-        // --- GUARDADO LOCAL ---
+        function blinkField(id) {
+            const el = document.getElementById(id);
+            el.classList.add('bg-green-100');
+            setTimeout(() => el.classList.remove('bg-green-100'), 1000);
+        }
+
+        // --- 6. GUARDAR Y SINCRONIZAR ---
         function saveExpense(e) {
             e.preventDefault();
-            
-            const projectSelect = document.getElementById('project');
-            const projectOther = document.getElementById('otherProjectInput');
-            const finalProject = (projectSelect.value === 'Otro') ? projectOther.value : projectSelect.value;
+            const projSelect = document.getElementById('project');
+            const projOther = document.getElementById('otherProjectInput');
+            const project = (projSelect.value === 'Otro') ? projOther.value : projSelect.value;
 
-            if(!finalProject) { showToast("Especifica el nombre del proyecto", true); return; }
+            if(!project) { alert("Indica el proyecto"); return; }
+            if(!compressedImageBase64) { 
+                if(!confirm("¿Guardar sin foto?")) return; 
+            }
 
-            // Validar tamaño de localStorage (Max ~5MB)
-            // Si la imagen comprimida pesa 100kb, podemos guardar ~50 recibos.
-            
             const expense = {
                 id: Date.now(),
                 date: document.getElementById('date').value,
                 description: document.getElementById('description').value,
                 docNo: document.getElementById('docNo').value || "S/N",
-                project: finalProject, 
+                project: project,
                 amount: parseFloat(document.getElementById('amount').value),
                 requester: document.getElementById('requester').value,
-                image: currentImageCompressed // Guardamos la versión comprimida
+                image: compressedImageBase64 || ""
             };
 
+            // Guardar LS
             try {
                 expenses.push(expense);
                 localStorage.setItem('expenses', JSON.stringify(expenses));
                 renderList();
+                // Limpiar form pero dejar fecha y solicitante
+                document.getElementById('description').value = "";
+                document.getElementById('amount').value = "";
+                document.getElementById('docNo').value = "";
                 resetImage();
-                showToast("Guardado (con foto)");
-            } catch (err) {
-                if (err.name === 'QuotaExceededError') {
-                    showToast("¡Memoria llena! Sincroniza o borra registros.", true);
-                    expenses.pop(); // Revertir push
-                } else {
-                    console.error(err);
-                }
+                log("Gasto guardado en memoria.");
+            } catch(e) {
+                alert("Memoria llena. Sincroniza para liberar espacio.");
             }
         }
 
+        function syncToSheet() {
+            if (expenses.length === 0) { alert("Nada pendiente por subir"); return; }
+            
+            const overlay = document.getElementById('loading-overlay');
+            const txt = document.getElementById('loading-text');
+            overlay.classList.remove('hidden');
+            txt.innerText = `Subiendo ${expenses.length} facturas...`;
+
+            // Formatear datos para el script
+            const payload = expenses.map(e => {
+                const d = e.date.split('-'); 
+                return {
+                    formattedDate: `${d[2]}/${d[1]}`, // DD/MM
+                    description: e.description,
+                    docNo: e.docNo,
+                    project: e.project,
+                    amount: e.amount,
+                    requester: e.requester,
+                    image: e.image
+                };
+            });
+
+            log("Iniciando envío a Google...");
+
+            fetch(SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors", // Esto es necesario pero oculta errores
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+            .then(() => {
+                // Al ser no-cors, siempre entra aquí aunque falle el script interno
+                overlay.classList.add('hidden');
+                log("Envío finalizado (respuesta opaca).");
+                
+                if(confirm("Se enviaron los datos. Verifica la hoja.\n\n¿Borrar pendientes y limpiar?")) {
+                    expenses = [];
+                    localStorage.setItem('expenses', JSON.stringify([]));
+                    renderList();
+                    log("Lista limpiada.");
+                }
+            })
+            .catch(err => {
+                overlay.classList.add('hidden');
+                log("ERROR RED: " + err);
+                alert("Error de conexión. Revisa el monitor abajo.");
+            });
+        }
+
+        // --- UTILIDADES ---
         function renderList() {
-            const list = document.getElementById('expense-list');
+            const container = document.getElementById('expense-list');
             const totalEl = document.getElementById('total-sum');
             
-            if (expenses.length === 0) {
-                list.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-gray-400 text-xs italic">No hay facturas pendientes</td></tr>';
+            if(expenses.length === 0) {
+                container.innerHTML = `<div class="text-center py-8 text-gray-400 text-sm bg-white rounded-xl border border-dashed border-gray-300">No hay facturas pendientes</div>`;
                 totalEl.innerText = "Total: Q0.00";
                 return;
             }
 
             let html = '';
             let total = 0;
-
-            expenses.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(item => {
-                total += item.amount;
-                const d = new Date(item.date + 'T00:00:00');
-                const displayDate = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}`;
-                
-                // Icono de foto si existe
-                const photoIcon = item.image ? '<span class="material-icons-round text-xs text-teal-500">photo_camera</span>' : '';
-
+            expenses.forEach((ex) => {
+                total += ex.amount;
                 html += `
-                <tr class="bg-white border-b hover:bg-gray-50">
-                    <td class="px-3 py-3 font-medium text-gray-900">${displayDate}</td>
-                    <td class="px-3 py-3">
-                        <div class="truncate max-w-[100px] font-medium flex items-center gap-1">${item.description} ${photoIcon}</div>
-                        <div class="text-[10px] text-gray-400">${item.project}</div>
-                    </td>
-                    <td class="px-3 py-3 text-right font-bold text-teal-600">Q${item.amount.toFixed(2)}</td>
-                    <td class="px-2 py-3 text-center">
-                        <button onclick="deleteExpense(${item.id})" class="text-gray-300 hover:text-red-500 transition">
-                            <span class="material-icons-round text-lg">close</span>
-                        </button>
-                    </td>
-                </tr>
-                `;
+                <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-100 flex justify-between items-center">
+                    <div>
+                        <div class="font-bold text-gray-800 text-sm">${ex.description}</div>
+                        <div class="text-xs text-gray-500 flex gap-2">
+                            <span>${ex.date}</span>
+                            <span class="bg-gray-100 px-1 rounded">${ex.project}</span>
+                            ${ex.image ? '<span class="text-green-600">📸</span>' : ''}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-bold text-teal-600">Q${ex.amount.toFixed(2)}</div>
+                        <button onclick="removeOne(${ex.id})" class="text-xs text-red-400 p-1">Eliminar</button>
+                    </div>
+                </div>`;
             });
-
-            list.innerHTML = html;
+            container.innerHTML = html;
             totalEl.innerText = `Total: Q${total.toFixed(2)}`;
         }
 
-        function deleteExpense(id) {
-            if(confirm('¿Eliminar registro?')) {
-                expenses = expenses.filter(e => e.id !== id);
+        function removeOne(id) {
+            if(confirm("¿Borrar este item?")) {
+                expenses = expenses.filter(x => x.id !== id);
                 localStorage.setItem('expenses', JSON.stringify(expenses));
                 renderList();
             }
         }
 
         function clearData() {
-            if(confirm('¿Borrar TODO el historial local?')) {
+            if(confirm("¿Borrar TODO?")) {
                 expenses = [];
                 localStorage.removeItem('expenses');
                 renderList();
             }
         }
 
-        // --- SINCRONIZACIÓN AUTOMÁTICA ---
-        function syncToSheet() {
-            if (expenses.length === 0) { showToast("Nada que sincronizar", true); return; }
-            if (!SCRIPT_URL) {
-                toggleConfigModal();
-                alert("Falta configuración. Ingresa la URL del Script.");
-                return;
-            }
-
-            const statusEl = document.getElementById('sync-status');
-            const overlay = document.getElementById('sync-overlay');
-            overlay.classList.remove('hidden');
-            statusEl.innerText = `Subiendo ${expenses.length} facturas...`;
-
-            // Preparar payload
-            const dataPayload = expenses.map(row => {
-                const d = row.date.split('-'); 
-                return {
-                    formattedDate: `${d[2]}/${d[1]}`, // DD/MM
-                    description: row.description,
-                    docNo: row.docNo,
-                    project: row.project,
-                    amount: row.amount,
-                    requester: row.requester,
-                    image: row.image // Base64 comprimido
+        function compressImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = event => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800; // Reducir tamaño para evitar errores de red
+                        const scaleSize = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scaleSize;
+                        
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.6)); // Compresión JPG 60%
+                    };
+                    img.onerror = reject;
                 };
             });
-
-            fetch(SCRIPT_URL, {
-                method: "POST",
-                mode: "no-cors",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(dataPayload)
-            })
-            .then(() => {
-                overlay.classList.add('hidden');
-                if(confirm('¡Enviado a Drive con éxito!\n\nSe han subido los datos y las fotos.\n¿Limpiar lista local?')) {
-                    expenses = [];
-                    localStorage.setItem('expenses', JSON.stringify([]));
-                    renderList();
-                }
-            })
-            .catch(error => {
-                overlay.classList.add('hidden');
-                console.error("Error:", error);
-                alert("Error de conexión. Verifica la URL o tu internet.");
-            });
         }
 
-        function exportToCSV() {
-            if (expenses.length === 0) return;
-            let csvContent = "data:text/csv;charset=utf-8,Fecha,Descripción,Doc No,Proyecto,Valor,Solicitante\n";
-            expenses.forEach(r => {
-                csvContent += `${r.date},"${r.description}","${r.docNo}",${r.project},Q${r.amount.toFixed(2)},${r.requester}\n`;
-            });
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "reintegro_gastos.csv");
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
+        function toggleConfigModal() {
+            const modal = document.getElementById('config-modal');
+            modal.classList.toggle('hidden');
         }
 
-        function showToast(msg, isError = false) {
-            const toast = document.getElementById('toast');
-            const msgEl = document.getElementById('toast-message');
-            const icon = toast.querySelector('.material-icons-round');
-            
-            msgEl.innerText = msg;
-            icon.innerText = isError ? 'error_outline' : 'check_circle';
-            icon.className = `material-icons-round ${isError ? 'text-red-400' : 'text-green-400'}`;
-
-            toast.classList.remove('opacity-0');
-            setTimeout(() => toast.classList.add('opacity-0'), 4000);
+        function saveConfig() {
+            const val = document.getElementById('script-url-input').value;
+            localStorage.setItem('googleScriptUrl', val);
+            SCRIPT_URL = val;
+            toggleConfigModal();
+            log("Configuración actualizada");
+        }
+        
+        function toggleOtherProject() {
+            const sel = document.getElementById('project');
+            const inp = document.getElementById('otherProjectInput');
+            if(sel.value === 'Otro') inp.classList.remove('hidden');
+            else inp.classList.add('hidden');
         }
 
+        function log(msg) {
+            const logEl = document.getElementById('sys-log');
+            const line = document.createElement('div');
+            line.innerText = `> ${msg}`;
+            logEl.appendChild(line);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
     </script>
 </body>
 </html>
