@@ -74,7 +74,7 @@
                     <span class="material-icons-round">settings</span>
                 </button>
                 <div class="text-xs opacity-80 bg-teal-700 px-2 py-1 rounded">
-                    v2.3
+                    v2.4
                 </div>
             </div>
         </div>
@@ -283,8 +283,8 @@
     <script>
         // --- CONFIGURACIÓN ---
         let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
-        // URL Default Hardcoded por defecto como solicitaste
-        const DEFAULT_SCRIPT_URL = "https://script.google.com/a/macros/1bot.org/s/AKfycbzNmR-PSxg5siLSdSXj3okK2Mc_AiQ-MLAzcaHYJhb0fnPKsiHIyARoe846s7-xK0H9/exec";
+        // URL ACTUALIZADA POR EL USUARIO
+        const DEFAULT_SCRIPT_URL = "https://script.google.com/a/macros/1bot.org/s/AKfycbyzPLnruJtBNlU0BFo7imhpCdUgbihMeKg-Hjc3i3WjWpxA5TWtsze2LHlt64GRUQD0/exec";
         
         // Usar la guardada o la default
         let SCRIPT_URL = localStorage.getItem('googleScriptUrl') || DEFAULT_SCRIPT_URL;
