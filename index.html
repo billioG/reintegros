@@ -36,7 +36,7 @@
         <div class="flex justify-between items-center max-w-2xl mx-auto">
             <h1 class="text-lg font-bold flex items-center gap-2 text-teal-400">
                 <span class="material-icons-round">receipt_long</span>
-                Reintegros Pro v3.4
+                Reintegros Pro v3.5
             </h1>
             <button onclick="toggleConfigModal()" class="text-gray-400 hover:text-white transition">
                 <span class="material-icons-round">settings</span>
@@ -88,6 +88,14 @@
 
             <!-- Formulario -->
             <form id="expense-form" class="bg-white rounded-xl shadow p-5 space-y-4 border border-gray-200" onsubmit="saveExpense(event)">
+                <div class="flex items-center justify-between border-b pb-2">
+                    <h3 class="font-bold text-gray-700 flex items-center gap-2">
+                        <span class="material-icons-round text-teal-600">edit</span>
+                        Datos
+                    </h3>
+                    <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded" id="img-indicator">Sin Foto</span>
+                </div>
+
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="text-xs font-bold text-gray-500 uppercase">Fecha</label>
@@ -415,8 +423,13 @@
                 document.getElementById('image-preview').src = ev.target.result;
                 document.getElementById('upload-placeholder').classList.add('hidden');
                 document.getElementById('preview-container').classList.remove('hidden');
-                document.getElementById('img-indicator').innerText = "Foto OK";
-                document.getElementById('img-indicator').className = "text-xs text-green-600 bg-green-100 px-2 py-1 rounded";
+                
+                // SAFE CHECK: verify element exists before setting
+                const indicator = document.getElementById('img-indicator');
+                if (indicator) {
+                    indicator.innerText = "Foto OK";
+                    indicator.className = "text-xs text-green-600 bg-green-100 px-2 py-1 rounded";
+                }
             };
             reader.readAsDataURL(file);
 
@@ -563,8 +576,13 @@
             originalImageFile = null; compressedImageBase64 = null;
             document.getElementById('upload-placeholder').classList.remove('hidden');
             document.getElementById('preview-container').classList.add('hidden');
-            document.getElementById('img-indicator').innerText = "Sin Foto";
-            document.getElementById('img-indicator').className = "text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded";
+            
+            // SAFE CHECK: verify element exists before setting
+            const indicator = document.getElementById('img-indicator');
+            if (indicator) {
+                indicator.innerText = "Sin Foto";
+                indicator.className = "text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded";
+            }
         }
         function toggleOtherProject() {
             const p = document.getElementById('project');
