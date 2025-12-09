@@ -9,13 +9,18 @@
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- Librerías Externas -->
-    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script> <!-- OCR -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script> <!-- Cropper -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Gráficos Dashboard -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <!-- Iconos -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
 
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; }
@@ -23,7 +28,6 @@
         @keyframes scan { 0% { top: 0%; opacity: 0; } 50% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
         input[type="file"] { display: none; }
         .cropper-container { max-height: 70vh !important; }
-        /* Transiciones suaves entre pestañas */
         .tab-content { display: none; animation: fadeIn 0.3s; }
         .tab-content.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -35,12 +39,10 @@
     <header class="bg-gray-900 text-white p-4 shadow-lg sticky top-0 z-50">
         <div class="flex justify-between items-center max-w-2xl mx-auto">
             <h1 class="text-lg font-bold flex items-center gap-2 text-teal-400">
-                <span class="material-icons-round">receipt_long</span>
-                Reintegros Pro v3.5
+                <span class="material-icons-round">cloud_done</span>
+                Reintegros Cloud
             </h1>
-            <button onclick="toggleConfigModal()" class="text-gray-400 hover:text-white transition">
-                <span class="material-icons-round">settings</span>
-            </button>
+            <div class="text-xs bg-teal-900 px-2 py-1 rounded text-teal-200">v4.0 Final</div>
         </div>
     </header>
 
@@ -87,7 +89,7 @@
             </div>
 
             <!-- Formulario -->
-            <form id="expense-form" class="bg-white rounded-xl shadow p-5 space-y-4 border border-gray-200" onsubmit="saveExpense(event)">
+            <form id="expense-form" class="bg-white rounded-xl shadow p-5 space-y-4 border border-gray-200" onsubmit="saveToCloud(event)">
                 <div class="flex items-center justify-between border-b pb-2">
                     <h3 class="font-bold text-gray-700 flex items-center gap-2">
                         <span class="material-icons-round text-teal-600">edit</span>
@@ -142,36 +144,21 @@
                     </div>
                 </div>
 
-                <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3.5 rounded-xl shadow-lg flex justify-center items-center gap-2">
-                    <span class="material-icons-round">save</span> Guardar
+                <button type="submit" id="btn-save" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3.5 rounded-xl shadow-lg flex justify-center items-center gap-2">
+                    <span class="material-icons-round">cloud_upload</span> Guardar en Nube
                 </button>
             </form>
-
-            <!-- Lista Pendiente -->
-            <div class="bg-white rounded-xl shadow overflow-hidden">
-                <div class="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
-                    <h3 class="font-bold text-gray-600 text-sm">Cola de Envío</h3>
-                    <button onclick="clearData()" class="text-xs text-red-500">Borrar</button>
-                </div>
-                <div id="expense-list" class="divide-y divide-gray-100 max-h-40 overflow-y-auto">
-                    <div class="p-4 text-center text-gray-400 text-xs">Vacío</div>
-                </div>
-                <div class="bg-gray-100 px-4 py-2 text-right font-bold text-sm" id="total-sum">Total: Q0.00</div>
-                <button onclick="syncToSheet()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 flex justify-center gap-2 items-center">
-                    <span class="material-icons-round">cloud_upload</span> Sincronizar Todo
-                </button>
-            </div>
         </div>
 
         <!-- ======================= -->
-        <!-- VISTA 2: DASHBOARD (ADMIN) -->
+        <!-- VISTA 2: DASHBOARD      -->
         <!-- ======================= -->
         <div id="view-dashboard" class="tab-content space-y-4">
             <div class="bg-white rounded-xl shadow p-4">
                 <div class="flex justify-between items-center mb-4">
-                    <h2 class="font-bold text-gray-800">Resumen de Gastos</h2>
-                    <button onclick="loadDashboardData()" class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                        <span class="material-icons-round text-sm">refresh</span> Actualizar
+                    <h2 class="font-bold text-gray-800">Base de Datos</h2>
+                    <button onclick="downloadCSV()" class="bg-green-100 text-green-700 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-green-200">
+                        <span class="material-icons-round text-sm">file_download</span> Bajar Excel
                     </button>
                 </div>
                 
@@ -193,14 +180,14 @@
                 </div>
 
                 <!-- Tabla Reciente -->
-                <h3 class="font-bold text-gray-700 text-sm mb-2">Últimos Registros</h3>
-                <div class="overflow-x-auto">
+                <h3 class="font-bold text-gray-700 text-sm mb-2">Historial en Nube</h3>
+                <div class="overflow-x-auto max-h-60">
                     <table class="w-full text-xs text-left text-gray-500">
-                        <thead class="bg-gray-100 text-gray-700 uppercase">
-                            <tr><th class="p-2">Fecha</th><th class="p-2">Desc</th><th class="p-2 text-right">Valor</th></tr>
+                        <thead class="bg-gray-100 text-gray-700 uppercase sticky top-0">
+                            <tr><th class="p-2">Fecha</th><th class="p-2">Desc</th><th class="p-2 text-right">Valor</th><th class="p-2"></th></tr>
                         </thead>
                         <tbody id="dash-table-body">
-                            <tr><td colspan="3" class="p-2 text-center">Cargando...</td></tr>
+                            <tr><td colspan="4" class="p-4 text-center">Cargando datos...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -213,11 +200,11 @@
     <nav class="fixed bottom-0 w-full bg-white border-t border-gray-200 shadow-lg z-40 flex justify-around py-2">
         <button onclick="switchTab('capture')" class="flex flex-col items-center text-teal-600 w-full" id="nav-capture">
             <span class="material-icons-round">add_circle</span>
-            <span class="text-[10px] font-bold">Captura</span>
+            <span class="text-[10px] font-bold">Nuevo Gasto</span>
         </button>
         <button onclick="switchTab('dashboard')" class="flex flex-col items-center text-gray-400 hover:text-blue-600 w-full" id="nav-dashboard">
-            <span class="material-icons-round">dashboard</span>
-            <span class="text-[10px] font-bold">Dashboard</span>
+            <span class="material-icons-round">storage</span>
+            <span class="text-[10px] font-bold">Ver Datos</span>
         </button>
     </nav>
 
@@ -227,178 +214,194 @@
         <div class="bg-gray-900 p-4 flex gap-4"><button onclick="closeCropper()" class="flex-1 bg-gray-600 text-white py-3 rounded">Cancelar</button><button onclick="performCrop()" class="flex-1 bg-white text-black py-3 rounded font-bold">Recortar</button></div>
     </div>
 
-    <!-- CONFIG MODAL -->
-    <div id="config-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[70] hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl w-full max-w-sm p-5">
-            <h3 class="font-bold mb-2">Configuración</h3>
-            <label class="text-xs font-bold block mb-1">URL Script (Web App)</label>
-            <input type="text" id="script-url-input" class="w-full border rounded p-2 text-xs mb-4">
-            <label class="text-xs font-bold block mb-1">ID Hoja Google</label>
-            <input type="text" id="sheet-id-input" class="w-full border rounded p-2 text-xs mb-4" value="19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78">
-            <div class="flex justify-end gap-2"><button onclick="toggleConfigModal()" class="px-3 py-1">Cerrar</button><button onclick="saveConfig()" class="px-3 py-1 bg-teal-600 text-white rounded">Guardar</button></div>
-        </div>
-    </div>
-
     <!-- LOADING OVERLAY -->
     <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-80 z-[80] hidden flex flex-col items-center justify-center text-white">
         <div class="w-12 h-12 border-4 border-t-4 border-gray-200 rounded-full animate-spin mb-4" style="border-top-color: #14b8a6"></div>
-        <p id="loading-text" class="font-bold">Procesando...</p>
+        <p id="loading-text" class="font-bold">Guardando en Nube...</p>
     </div>
 
-    <script>
-        // CONFIGURACIÓN INICIAL
-        let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
-        const DEFAULT_SCRIPT = "https://script.google.com/macros/s/AKfycbznuL-_Z-XYF9ArNIbRHkUXJuVYoUfpE59NAsHN1CsyOJLmWlfhWCubV2thUBj5uR5i/exec";
-        let SCRIPT_URL = localStorage.getItem('googleScriptUrl') || DEFAULT_SCRIPT;
-        let SHEET_ID = localStorage.getItem('googleSheetId') || "19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78";
+    <script type="module">
+        // --- 1. FIREBASE CONFIG & INIT ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // Obtener config del entorno (Proporcionado automáticamente)
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'reintegros-app';
+        let currentUser = null;
+        let expensesData = []; // Cache local para exportación
+
+        // Iniciar Sesión Anónima
+        signInAnonymously(auth).catch((error) => console.error("Auth Error", error));
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                initRealtimeListener(); // Escuchar cambios en la DB
+            }
+        });
+
+        // --- 2. GLOBAL VARIABLES ---
         let originalImageFile = null;
         let compressedImageBase64 = null;
         let cropper = null;
         let myChart = null;
 
+        // Exponer funciones globales para el HTML
+        window.handleImageUpload = handleImageUpload;
+        window.resetImage = resetImage;
+        window.openCropper = openCropper;
+        window.closeCropper = closeCropper;
+        window.performCrop = performCrop;
+        window.triggerSpecificOCR = triggerSpecificOCR;
+        window.saveToCloud = saveToCloud;
+        window.toggleOtherProject = toggleOtherProject;
+        window.switchTab = switchTab;
+        window.downloadCSV = downloadCSV;
+        window.deleteExpense = deleteExpense;
+
         document.addEventListener('DOMContentLoaded', () => {
-            renderList();
             document.getElementById('date').valueAsDate = new Date();
-            document.getElementById('script-url-input').value = SCRIPT_URL;
-            document.getElementById('sheet-id-input').value = SHEET_ID;
         });
 
-        // --- NAVEGACIÓN ---
-        function switchTab(tab) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.getElementById('view-' + tab).classList.add('active');
+        // --- 3. FIRESTORE LOGIC ---
+        
+        // Guardar Gasto
+        async function saveToCloud(e) {
+            e.preventDefault();
+            if (!currentUser) { alert("Conectando con la nube... espera un momento."); return; }
+
+            const loading = document.getElementById('loading-overlay');
+            loading.classList.remove('hidden');
+
+            const proj = document.getElementById('project').value === 'Otro' ? document.getElementById('otherProjectInput').value : document.getElementById('project').value;
             
-            // Estilos botones
-            const btnCap = document.getElementById('nav-capture');
-            const btnDash = document.getElementById('nav-dashboard');
-            
-            if(tab === 'capture') {
-                btnCap.classList.replace('text-gray-400', 'text-teal-600');
-                btnDash.classList.replace('text-blue-600', 'text-gray-400');
-            } else {
-                btnDash.classList.replace('text-gray-400', 'text-blue-600');
-                btnCap.classList.replace('text-teal-600', 'text-gray-400');
-                loadDashboardData(); // Cargar datos al abrir
+            const expense = {
+                date: document.getElementById('date').value,
+                description: document.getElementById('description').value,
+                docNo: document.getElementById('docNo').value || "S/N",
+                project: proj,
+                amount: parseFloat(document.getElementById('amount').value),
+                requester: document.getElementById('requester').value,
+                image: compressedImageBase64 || "", // Base64 comprimido
+                createdAt: Date.now()
+            };
+
+            try {
+                // Ruta estricta requerida por el entorno
+                const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'reintegros');
+                await addDoc(colRef, expense);
+                
+                alert("✅ ¡Guardado Exitoso!\nLos datos ya están seguros en la nube.");
+                resetForm();
+            } catch (err) {
+                console.error(err);
+                alert("Error al guardar: " + err.message);
+            } finally {
+                loading.classList.add('hidden');
             }
         }
 
-        // --- CORE: SINCRONIZACIÓN ROBUSTA (TEXT/PLAIN) ---
-        function syncToSheet() {
-            if(expenses.length === 0) { alert("Nada que subir"); return; }
-            
-            const overlay = document.getElementById('loading-overlay');
-            overlay.classList.remove('hidden');
-            document.getElementById('loading-text').innerText = "Enviando datos...";
-
-            const payload = expenses.map(e => {
-                const d = e.date.split('-');
-                return {
-                    formattedDate: `${d[2]}/${d[1]}`,
-                    description: e.description,
-                    docNo: e.docNo,
-                    project: e.project,
-                    amount: e.amount,
-                    requester: e.requester,
-                    image: e.image || ""
-                };
-            });
-
-            // TRUCO: Enviamos como text/plain para evitar CORS Preflight
-            fetch(SCRIPT_URL, {
-                method: "POST",
-                mode: "no-cors", 
-                headers: { "Content-Type": "text/plain" }, 
-                body: JSON.stringify(payload)
-            })
-            .then(() => {
-                overlay.classList.add('hidden');
-                // Al ser no-cors, asumimos éxito si no hubo error de red
-                if(confirm("✅ Envío completado.\n\nLos datos se enviaron a la cola de Google.\n\n¿Limpiar lista local?")) {
-                    expenses = [];
-                    localStorage.setItem('expenses', JSON.stringify([]));
-                    renderList();
-                }
-            })
-            .catch(err => {
-                overlay.classList.add('hidden');
-                alert("❌ Error de red: " + err);
-            });
-        }
-
-        // --- DASHBOARD: LECTURA DE DATOS ---
-        function loadDashboardData() {
-            // Usamos Google Visualization API para leer la hoja DATA (pública o compartida)
-            // Query: select D, F (Proyecto, Valor) where A is not null
-            const query = encodeURIComponent("select A, B, F, D"); // Fecha, Desc, Valor, Proyecto
-            const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=DATA&tq=${query}`;
-
-            fetch(url)
-            .then(res => res.text())
-            .then(text => {
-                // Limpiar respuesta rara de Google (/* ... */)
-                const jsonText = text.match(/google\.visualization\.Query\.setResponse\(([\s\S\w]+)\);/)[1];
-                const json = JSON.parse(jsonText);
-                const rows = json.table.rows;
+        // Escuchar Datos (Dashboard en Tiempo Real)
+        function initRealtimeListener() {
+            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'reintegros');
+            // Nota: No usamos orderBy complejo para evitar índices compuestos
+            onSnapshot(colRef, (snapshot) => {
+                expensesData = [];
+                snapshot.forEach(doc => {
+                    expensesData.push({ id: doc.id, ...doc.data() });
+                });
                 
-                renderDashboard(rows);
-            })
-            .catch(err => console.error("Error cargando dashboard", err));
+                // Ordenar en memoria (más reciente primero)
+                expensesData.sort((a, b) => b.createdAt - a.createdAt);
+                
+                updateDashboard(expensesData);
+            }, (error) => {
+                console.error("Error escuchando datos:", error);
+            });
         }
 
-        function renderDashboard(rows) {
+        function deleteExpense(id) {
+            if(!confirm("¿Eliminar este registro de la base de datos?")) return;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'reintegros', id);
+            deleteDoc(docRef).catch(err => alert("Error borrando: " + err));
+        }
+
+        // --- 4. EXPORTACIÓN A EXCEL/CSV ---
+        function downloadCSV() {
+            if (expensesData.length === 0) { alert("No hay datos para descargar"); return; }
+
+            // Formato CSV compatible con Excel
+            let csv = "Fecha,Descripción del Gasto,Doc. No.,Programa / Proyecto,Valor,Solicitante\n";
+            
+            expensesData.forEach(row => {
+                // Formatear fecha DD/MM/YYYY para Excel
+                const d = row.date.split('-');
+                const fecha = `${d[2]}/${d[1]}/${d[0]}`;
+                
+                const line = [
+                    fecha,
+                    `"${row.description.replace(/"/g, '""')}"`, // Escapar comillas
+                    `"${row.docNo}"`, // Forzar texto
+                    row.project,
+                    row.amount.toFixed(2),
+                    row.requester
+                ].join(",");
+                csv += line + "\n";
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "reintegros_data.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // --- 5. UI & UTILS ---
+
+        function updateDashboard(data) {
             let total = 0;
             const projectMap = {};
             const tbody = document.getElementById('dash-table-body');
             tbody.innerHTML = "";
 
-            // Procesar filas (empezar desde las ultimas para ver recientes)
-            // Columnas GVIZ: 0=Fecha, 1=Desc, 2=Valor, 3=Proyecto
-            
-            // Invertir para ver lo último primero
-            const recentRows = rows.slice().reverse().slice(0, 10); 
+            data.forEach(item => {
+                total += item.amount;
+                projectMap[item.project] = (projectMap[item.project] || 0) + item.amount;
 
-            rows.forEach(r => {
-                // FIX: Validar que sea número
-                let val = r.c[2] ? r.c[2].v : 0;
-                if (typeof val !== 'number') {
-                    // Intentar convertir si viene como string
-                    val = parseFloat(String(val).replace(/[^0-9.-]+/g,"")) || 0;
-                }
+                // Fila tabla
+                const d = item.date.split('-');
+                const fechaCorta = `${d[2]}/${d[1]}`;
                 
-                const proj = r.c[3] ? r.c[3].v : "Otros"; // Proyecto
-                total += val;
-                projectMap[proj] = (projectMap[proj] || 0) + val;
-            });
-
-            // Render KPI
-            document.getElementById('dash-total').innerText = `Q${total.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-            document.getElementById('dash-count').innerText = rows.length;
-
-            // Render Tabla
-            recentRows.forEach(r => {
-                const fecha = r.c[0] ? (r.c[0].f || r.c[0].v) : "";
-                const desc = r.c[1] ? r.c[1].v : "";
-                
-                // FIX: Validar valor individual
-                let val = r.c[2] ? r.c[2].v : 0;
-                if (typeof val !== 'number') {
-                    val = parseFloat(String(val).replace(/[^0-9.-]+/g,"")) || 0;
-                }
-
                 tbody.innerHTML += `
                     <tr class="border-b hover:bg-gray-50">
-                        <td class="p-2">${fecha}</td>
-                        <td class="p-2 truncate max-w-[100px]">${desc}</td>
-                        <td class="p-2 text-right font-bold text-teal-600">Q${val.toFixed(2)}</td>
+                        <td class="p-2 whitespace-nowrap">${fechaCorta}</td>
+                        <td class="p-2 truncate max-w-[120px]">
+                            <div class="font-medium text-gray-800">${item.description}</div>
+                            <div class="text-[10px] text-gray-400">${item.docNo}</div>
+                        </td>
+                        <td class="p-2 text-right font-bold text-teal-600">Q${item.amount.toFixed(2)}</td>
+                        <td class="p-2 text-center">
+                            <button onclick="deleteExpense('${item.id}')" class="text-red-400 hover:text-red-600">
+                                <span class="material-icons-round text-sm">delete</span>
+                            </button>
+                        </td>
                     </tr>
                 `;
             });
 
-            // Render Chart
+            document.getElementById('dash-total').innerText = `Q${total.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            document.getElementById('dash-count').innerText = data.length;
+
+            // Chart
             const ctx = document.getElementById('projectChart').getContext('2d');
             if(myChart) myChart.destroy();
-            
             myChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
@@ -412,7 +415,15 @@
             });
         }
 
-        // --- MANEJO IMÁGENES Y OCR (IGUAL QUE ANTES) ---
+        function resetForm() {
+            document.getElementById('description').value = "";
+            document.getElementById('amount').value = "";
+            document.getElementById('docNo').value = "";
+            resetImage();
+        }
+
+        // --- FUNCIONES OCR Y CROPPER (Iguales, adaptadas a módulos) ---
+        
         async function handleImageUpload(e) {
             const file = e.target.files[0];
             if(!file) return;
@@ -423,10 +434,8 @@
                 document.getElementById('image-preview').src = ev.target.result;
                 document.getElementById('upload-placeholder').classList.add('hidden');
                 document.getElementById('preview-container').classList.remove('hidden');
-                
-                // SAFE CHECK: verify element exists before setting
                 const indicator = document.getElementById('img-indicator');
-                if (indicator) {
+                if(indicator) {
                     indicator.innerText = "Foto OK";
                     indicator.className = "text-xs text-green-600 bg-green-100 px-2 py-1 rounded";
                 }
@@ -435,7 +444,7 @@
 
             try {
                 compressedImageBase64 = await compressImage(file);
-                runOCR(file); // OCR Auto
+                runOCR(file);
             } catch(err) { console.log(err); }
         }
 
@@ -454,31 +463,22 @@
 
         function processOCR(text) {
             const clean = text.replace(/[\r\n]+/g, '\n');
-            
-            // Regex ajustado para ignorar líneas dibujadas (__ or --)
-            // Valor
             const money = clean.match(/(?:Q\s?)?([0-9]{1,3}(?:[,.][0-9]{3})*[.,][0-9]{2})/g);
             if(money) {
-                const vals = money.map(v => parseFloat(v.replace(/[Q\s,]/g, '').replace(/(\d)\.(\d{3})/, '$1$2'))); // Basic cleanup
-                // Mejor heurística: buscar el valor que parezca un total (el mayor)
+                const vals = money.map(v => parseFloat(v.replace(/[Q\s,]/g, '').replace(/(\d)\.(\d{3})/, '$1$2'))); 
                 const max = Math.max(...vals.filter(n => !isNaN(n)));
                 if(max > 0) document.getElementById('amount').value = max.toFixed(2);
             }
-            
-            // Fecha
             const date = clean.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
             if(date) {
                 let y = date[3];
                 if(y.length===2) y = "20"+y;
                 document.getElementById('date').value = `${y}-${date[2].padStart(2,'0')}-${date[1].padStart(2,'0')}`;
             }
-
-            // Doc
             const doc = clean.match(/(?:serie|no|dte|fac)[\D]{0,10}(\b[A-Z0-9\-]{5,}\b)/i);
             if(doc) document.getElementById('docNo').value = doc[1];
         }
 
-        // --- CROPPER UTILS ---
         function openCropper() {
             if(!originalImageFile) return;
             const modal = document.getElementById('cropper-modal');
@@ -492,71 +492,22 @@
             };
             reader.readAsDataURL(originalImageFile);
         }
+
         function closeCropper() { document.getElementById('cropper-modal').classList.add('hidden'); if(cropper) cropper.destroy(); }
+        
         function performCrop() {
             cropper.getCroppedCanvas().toBlob(blob => {
                 closeCropper();
                 runOCR(blob);
             });
         }
+
         function triggerSpecificOCR(field) {
             if(!originalImageFile) { alert("Falta foto"); return; }
             alert("Recorta la zona del dato");
             openCropper();
         }
 
-        // --- UTILS LOCAL ---
-        function saveExpense(e) {
-            e.preventDefault();
-            const proj = document.getElementById('project').value === 'Otro' ? document.getElementById('otherProjectInput').value : document.getElementById('project').value;
-            
-            expenses.push({
-                id: Date.now(),
-                date: document.getElementById('date').value,
-                description: document.getElementById('description').value,
-                docNo: document.getElementById('docNo').value || "S/N",
-                project: proj,
-                amount: parseFloat(document.getElementById('amount').value),
-                requester: document.getElementById('requester').value,
-                image: compressedImageBase64
-            });
-            localStorage.setItem('expenses', JSON.stringify(expenses));
-            renderList();
-            resetImage();
-            document.getElementById('description').value = "";
-            document.getElementById('amount').value = "";
-            document.getElementById('docNo').value = "";
-        }
-
-        function renderList() {
-            const c = document.getElementById('expense-list');
-            c.innerHTML = "";
-            let t = 0;
-            expenses.forEach(x => {
-                t += x.amount;
-                c.innerHTML += `
-                <div class="p-3 border-b flex justify-between items-center">
-                    <div>
-                        <div class="font-bold text-sm text-gray-800">${x.description}</div>
-                        <div class="text-xs text-gray-500">${x.date} | ${x.project}</div>
-                    </div>
-                    <div class="text-right">
-                        <div class="font-bold text-teal-600">Q${x.amount.toFixed(2)}</div>
-                        <button onclick="del(${x.id})" class="text-xs text-red-400">X</button>
-                    </div>
-                </div>`;
-            });
-            document.getElementById('total-sum').innerText = `Total: Q${t.toFixed(2)}`;
-        }
-
-        function del(id) {
-            if(confirm("¿Eliminar?")) {
-                expenses = expenses.filter(x => x.id !== id);
-                localStorage.setItem('expenses', JSON.stringify(expenses));
-                renderList();
-            }
-        }
-        function clearData() { if(confirm("¿Borrar todo?")) { expenses=[]; localStorage.removeItem('expenses'); renderList(); } }
         function compressImage(f) {
             return new Promise((res, rej) => {
                 const r = new FileReader(); r.readAsDataURL(f);
@@ -572,30 +523,36 @@
                 }
             });
         }
+
         function resetImage() { 
             originalImageFile = null; compressedImageBase64 = null;
             document.getElementById('upload-placeholder').classList.remove('hidden');
             document.getElementById('preview-container').classList.add('hidden');
-            
-            // SAFE CHECK: verify element exists before setting
             const indicator = document.getElementById('img-indicator');
-            if (indicator) {
+            if(indicator) {
                 indicator.innerText = "Sin Foto";
                 indicator.className = "text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded";
             }
         }
+
         function toggleOtherProject() {
             const p = document.getElementById('project');
             const i = document.getElementById('otherProjectInput');
             if(p.value==='Otro') i.classList.remove('hidden'); else i.classList.add('hidden');
         }
-        function toggleConfigModal() { document.getElementById('config-modal').classList.toggle('hidden'); }
-        function saveConfig() {
-            SCRIPT_URL = document.getElementById('script-url-input').value;
-            SHEET_ID = document.getElementById('sheet-id-input').value;
-            localStorage.setItem('googleScriptUrl', SCRIPT_URL);
-            localStorage.setItem('googleSheetId', SHEET_ID);
-            toggleConfigModal();
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.getElementById('view-' + tab).classList.add('active');
+            const btnCap = document.getElementById('nav-capture');
+            const btnDash = document.getElementById('nav-dashboard');
+            if(tab === 'capture') {
+                btnCap.classList.replace('text-gray-400', 'text-teal-600');
+                btnDash.classList.replace('text-blue-600', 'text-gray-400');
+            } else {
+                btnDash.classList.replace('text-gray-400', 'text-blue-600');
+                btnCap.classList.replace('text-teal-600', 'text-gray-400');
+            }
         }
     </script>
 </body>
