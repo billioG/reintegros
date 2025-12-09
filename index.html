@@ -5,28 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Reintegro de Gastos PWA</title>
     
-    <!-- Tailwind CSS (via CDN para estilizado rápido y responsivo) -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Tesseract.js para OCR (Reconocimiento de Texto) -->
+    <!-- Tesseract.js -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 
-    <!-- Google Material Icons -->
+    <!-- Google Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 
     <style>
-        /* Estilos personalizados para sensación de App Nativa */
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: #f3f4f6;
             -webkit-tap-highlight-color: transparent;
         }
         
-        .scan-overlay {
-            background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0));
-        }
-
-        /* Animación de escaneo */
+        /* Animaciones */
         @keyframes scan {
             0% { top: 0%; opacity: 0; }
             10% { opacity: 1; }
@@ -46,7 +41,6 @@
 
         .loader {
             border-top-color: #0ea5e9;
-            -webkit-animation: spinner 1.5s linear infinite;
             animation: spinner 1.5s linear infinite;
         }
 
@@ -54,14 +48,19 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-
-        /* Ocultar input file feo */
-        input[type="file"] {
-            display: none;
+        
+        /* Modal Transitions */
+        .modal {
+            transition: opacity 0.25s ease;
         }
+        body.modal-active {
+            overflow: hidden;
+        }
+
+        input[type="file"] { display: none; }
     </style>
 </head>
-<body class="pb-20">
+<body class="pb-32"> <!-- Aumentado padding bottom para barra de 3 botones -->
 
     <!-- Header -->
     <header class="bg-teal-600 text-white p-4 shadow-md sticky top-0 z-50">
@@ -70,15 +69,20 @@
                 <span class="material-icons-round">receipt_long</span>
                 Reintegro de Gastos
             </h1>
-            <div class="text-xs opacity-80 bg-teal-700 px-2 py-1 rounded">
-                v1.0
+            <div class="flex items-center gap-3">
+                <button onclick="toggleConfigModal()" class="text-white hover:bg-teal-700 rounded-full p-1 transition">
+                    <span class="material-icons-round">settings</span>
+                </button>
+                <div class="text-xs opacity-80 bg-teal-700 px-2 py-1 rounded">
+                    v2.2
+                </div>
             </div>
         </div>
     </header>
 
     <main class="max-w-2xl mx-auto p-4">
 
-        <!-- Sección de Cámara / Captura -->
+        <!-- Sección de Cámara -->
         <div class="bg-white rounded-xl shadow-sm p-6 mb-6 text-center border-2 border-dashed border-gray-300 relative overflow-hidden" id="camera-section">
             <div class="scanner-line" id="scanner-line"></div>
             
@@ -87,14 +91,17 @@
                 <button onclick="resetImage()" class="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full shadow hover:bg-red-600 transition">
                     <span class="material-icons-round text-sm">close</span>
                 </button>
+                <div class="absolute bottom-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                    <span id="img-size-info">0 KB</span>
+                </div>
             </div>
 
             <div id="upload-placeholder">
                 <div class="bg-teal-50 text-teal-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
                     <span class="material-icons-round text-3xl">add_a_photo</span>
                 </div>
-                <h2 class="text-gray-800 font-medium mb-1">Escanear Factura</h2>
-                <p class="text-gray-500 text-sm mb-4">Toma una foto para extraer datos automáticamente</p>
+                <h2 class="text-gray-800 font-medium mb-1">Escanear DTE / Factura</h2>
+                <p class="text-gray-500 text-sm mb-4">Captura Fecha, DTE No. y Total</p>
                 
                 <label for="camera-input" class="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-full font-semibold shadow-lg active:scale-95 transition cursor-pointer hover:bg-teal-700">
                     <span class="material-icons-round">camera_alt</span>
@@ -103,7 +110,7 @@
                 <input type="file" id="camera-input" accept="image/*" capture="environment" onchange="handleImageUpload(event)">
             </div>
 
-            <!-- Loading OCR State -->
+            <!-- OCR Loading -->
             <div id="ocr-loading" class="hidden mt-4">
                 <div class="flex justify-center items-center gap-3">
                     <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6"></div>
@@ -115,7 +122,7 @@
             </div>
         </div>
 
-        <!-- Formulario de Datos -->
+        <!-- Formulario -->
         <form id="expense-form" class="bg-white rounded-xl shadow-sm p-5 space-y-4" onsubmit="saveExpense(event)">
             <h3 class="text-gray-800 font-bold border-b pb-2 mb-2 flex items-center gap-2">
                 <span class="material-icons-round text-teal-600">edit_note</span>
@@ -129,8 +136,8 @@
                     <input type="date" id="date" required class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Doc. No.</label>
-                    <input type="text" id="docNo" placeholder="Ej: 123456" class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Doc. No. / DTE</label>
+                    <input type="text" id="docNo" placeholder="Ej: 89E129EE..." class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5 font-mono text-sm">
                 </div>
             </div>
 
@@ -142,18 +149,21 @@
 
             <!-- Proyecto y Solicitante -->
             <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Proyecto</label>
-                    <select id="project" class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+                <div class="flex flex-col gap-2">
+                    <label class="block text-xs font-bold text-gray-500 uppercase">Proyecto</label>
+                    <!-- Select Principal -->
+                    <select id="project" onchange="toggleOtherProject()" class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
                         <option value="1bot">1bot</option>
                         <option value="BI">BI</option>
                         <option value="ATT">ATT</option>
                         <option value="Admin">Administración</option>
-                        <option value="Otro">Otro</option>
+                        <option value="Otro">Otro...</option>
                     </select>
+                    <!-- Input oculto para "Otro" -->
+                    <input type="text" id="otherProjectInput" placeholder="Especifique proyecto" class="hidden w-full bg-white border border-teal-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5 text-sm animate-fade-in">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Solicitante</label>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Solicitante</label>
                     <input type="text" id="requester" value="Billy" class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
                 </div>
             </div>
@@ -170,42 +180,32 @@
             </div>
 
             <!-- Botón Guardar -->
-            <button type="submit" class="w-full text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:ring-teal-300 font-medium rounded-lg text-sm px-5 py-3.5 text-center flex justify-center items-center gap-2 shadow-lg mt-2">
+            <button type="submit" class="w-full text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:ring-teal-300 font-medium rounded-lg text-sm px-5 py-3.5 text-center flex justify-center items-center gap-2 shadow-lg mt-2 transition-all">
                 <span class="material-icons-round">save</span>
-                Guardar Reintegro
+                Guardar Registro
             </button>
         </form>
 
-        <!-- Historial y Exportación -->
-        <div class="mt-8">
+        <!-- Historial -->
+        <div class="mt-8 mb-24">
             <div class="flex justify-between items-end mb-4">
                 <h3 class="text-lg font-bold text-gray-800">Registros Pendientes</h3>
-                <div class="flex gap-2">
-                     <button onclick="copyToClipboard()" class="text-xs bg-white text-teal-600 border border-teal-600 px-3 py-1.5 rounded hover:bg-teal-50 flex items-center gap-1">
-                        <span class="material-icons-round text-sm">content_copy</span> Copiar
-                    </button>
-                    <button onclick="exportToCSV()" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 flex items-center gap-1 shadow">
-                        <span class="material-icons-round text-sm">file_download</span> Excel
-                    </button>
-                </div>
+                <button onclick="clearData()" class="text-xs text-red-500 underline">Limpiar todo</button>
             </div>
 
-            <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 mb-4">
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm text-left text-gray-500">
                         <thead class="text-xs text-gray-700 uppercase bg-gray-100">
                             <tr>
-                                <th scope="col" class="px-4 py-3">Fecha</th>
-                                <th scope="col" class="px-4 py-3">Desc.</th>
-                                <th scope="col" class="px-4 py-3 text-right">Valor</th>
-                                <th scope="col" class="px-4 py-3 text-center">Acción</th>
+                                <th scope="col" class="px-3 py-3">Fecha</th>
+                                <th scope="col" class="px-3 py-3">Desc.</th>
+                                <th scope="col" class="px-3 py-3 text-right">Valor</th>
+                                <th scope="col" class="px-2 py-3"></th>
                             </tr>
                         </thead>
                         <tbody id="expense-list">
-                            <!-- Los items se insertan aquí con JS -->
-                            <tr>
-                                <td colspan="4" class="text-center py-4 text-gray-400">No hay registros pendientes</td>
-                            </tr>
+                            <tr><td colspan="4" class="text-center py-4 text-gray-400">Sin registros</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -214,73 +214,216 @@
                 </div>
             </div>
             
-            <button onclick="clearData()" class="mt-4 text-xs text-red-500 underline w-full text-center">Borrar todos los datos locales</button>
         </div>
 
     </main>
 
-    <!-- Notificación Toast -->
-    <div id="toast" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-xl text-sm transition-opacity duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-2">
-        <span class="material-icons-round text-green-400 text-sm">check_circle</span>
-        <span id="toast-message">Guardado</span>
+    <!-- Barra Inferior de Sincronización (Sticky) -->
+    <div class="fixed bottom-0 left-0 right-0 bg-white border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] p-3 z-40">
+        <div class="max-w-2xl mx-auto flex gap-2">
+             <button onclick="exportToCSV()" class="flex-1 bg-gray-100 text-gray-700 font-medium py-3 rounded-lg flex flex-col justify-center items-center gap-1 active:bg-gray-200 transition text-xs">
+                <span class="material-icons-round text-gray-500 text-base">file_download</span>
+                CSV
+            </button>
+            <button onclick="openSheet()" class="flex-1 bg-blue-50 text-blue-700 font-medium py-3 rounded-lg flex flex-col justify-center items-center gap-1 active:bg-blue-100 transition text-xs border border-blue-100">
+                <span class="material-icons-round text-base">open_in_new</span>
+                Ver Hoja
+            </button>
+            <button onclick="syncToSheet()" id="btn-sync" class="flex-[2] bg-green-600 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 shadow-lg hover:bg-green-700 active:scale-95 transition text-sm">
+                <span class="material-icons-round">sync</span>
+                Sincronizar
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal Configuración -->
+    <div id="config-modal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-[60]">
+        <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50" onclick="toggleConfigModal()"></div>
+        
+        <div class="modal-container bg-white w-11/12 max-w-md mx-auto rounded-xl shadow-2xl z-50 overflow-y-auto animate-bounce-in">
+            <div class="modal-content py-4 text-left px-6">
+                <!--Title-->
+                <div class="flex justify-between items-center pb-3 border-b mb-4">
+                    <p class="text-xl font-bold text-gray-800">Configuración</p>
+                    <div class="cursor-pointer z-50" onclick="toggleConfigModal()">
+                        <span class="material-icons-round text-gray-500">close</span>
+                    </div>
+                </div>
+
+                <!--Body-->
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">URL del Google Apps Script</label>
+                    <p class="text-xs text-gray-500 mb-2">
+                        Pega aquí la URL de la aplicación web implementada (termina en <code>/exec</code>).
+                        <br><span class="text-red-500 font-semibold">*No pegues la URL de la hoja de cálculo.</span>
+                    </p>
+                    <input type="text" id="script-url-input" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-teal-500 focus:border-teal-500" placeholder="https://script.google.com/macros/s/...">
+                </div>
+
+                <!--Footer-->
+                <div class="flex justify-end pt-2">
+                    <button onclick="saveConfig()" class="px-4 py-2 bg-teal-600 p-3 rounded-lg text-white hover:bg-teal-700 font-bold w-full">Guardar Configuración</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-3 rounded-lg shadow-xl text-sm transition-opacity duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-3 w-max max-w-[90%]">
+        <span class="material-icons-round text-green-400">check_circle</span>
+        <span id="toast-message">Mensaje</span>
+    </div>
+
+    <!-- Loading Overlay para Sincronización -->
+    <div id="sync-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-[70] hidden flex flex-col justify-center items-center">
+        <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
+        <p class="text-white font-bold text-lg animate-pulse" id="sync-status">Sincronizando...</p>
     </div>
 
     <script>
-        // --- 1. CONFIGURACIÓN Y VARIABLES ---
+        // --- CONFIGURACIÓN ---
         let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
+        let SCRIPT_URL = localStorage.getItem('googleScriptUrl') || "";
+        let currentImageCompressed = null; // Almacena la imagen actual en memoria
         
-        // Al cargar la página
+        // URL Específica solicitada por el usuario para visualización
+        const SHEET_VIEW_URL = "https://docs.google.com/spreadsheets/d/19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78/edit?gid=230086021#gid=230086021";
+
         document.addEventListener('DOMContentLoaded', () => {
             renderList();
-            // Poner fecha de hoy por defecto
             document.getElementById('date').valueAsDate = new Date();
+            if(SCRIPT_URL) document.getElementById('script-url-input').value = SCRIPT_URL;
         });
 
-        // --- 2. LÓGICA DE CÁMARA Y OCR ---
+        // --- FUNCIONES NUEVAS ---
+        function openSheet() {
+            window.open(SHEET_VIEW_URL, '_blank');
+        }
+
+        // --- LÓGICA DE CONFIGURACIÓN ---
+        function toggleConfigModal() {
+            const modal = document.getElementById('config-modal');
+            const body = document.querySelector('body');
+            
+            modal.classList.toggle('opacity-0');
+            modal.classList.toggle('pointer-events-none');
+            body.classList.toggle('modal-active');
+        }
+
+        function saveConfig() {
+            const url = document.getElementById('script-url-input').value.trim();
+            
+            // Validación inteligente: Si el usuario pega la URL de docs.google.com en vez del script
+            if (url.includes("docs.google.com") || url.includes("spreadsheets")) {
+                alert("¡Atención!\n\nHas pegado la URL de la Hoja de Cálculo.\n\nPara que la sincronización automática funcione, necesitas la URL del 'Script' que generaste (termina en /exec).\n\nLa URL de la hoja ya está configurada en el botón 'Ver Hoja'.");
+                return;
+            }
+
+            if(url) {
+                localStorage.setItem('googleScriptUrl', url);
+                SCRIPT_URL = url;
+                showToast("Configuración guardada");
+                toggleConfigModal();
+            } else {
+                showToast("La URL no puede estar vacía", true);
+            }
+        }
+
+        function toggleOtherProject() {
+            const select = document.getElementById('project');
+            const input = document.getElementById('otherProjectInput');
+            if (select.value === 'Otro') {
+                input.classList.remove('hidden');
+                input.focus();
+                input.required = true;
+            } else {
+                input.classList.add('hidden');
+                input.required = false;
+            }
+        }
+
+        // --- MANEJO DE IMAGEN Y COMPRESIÓN ---
         async function handleImageUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
 
-            // Mostrar UI de carga y preview
+            // 1. Mostrar preview inmediato
             const reader = new FileReader();
-            reader.onload = function(e){
+            reader.onload = e => {
                 document.getElementById('image-preview').src = e.target.result;
                 document.getElementById('upload-placeholder').classList.add('hidden');
                 document.getElementById('preview-container').classList.remove('hidden');
-                document.getElementById('scanner-line').style.display = 'block';
             }
             reader.readAsDataURL(file);
 
+            // 2. Comprimir imagen para almacenamiento y envío
+            try {
+                const compressedBase64 = await compressImage(file);
+                currentImageCompressed = compressedBase64;
+                
+                // Mostrar tamaño aproximado
+                const sizeKB = Math.round((compressedBase64.length * 3 / 4) / 1024);
+                document.getElementById('img-size-info').innerText = sizeKB + ' KB';
+
+                // 3. Iniciar OCR sobre la imagen
+                runOCR(file); 
+
+            } catch (err) {
+                console.error("Error comprimiendo", err);
+                showToast("Error procesando imagen", true);
+            }
+        }
+
+        // Función Helper para redimensionar imágenes (Canvas)
+        function compressImage(file) {
+            return new Promise((resolve, reject) => {
+                const maxWidth = 800; // Ancho máximo para no saturar localStorage
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = event => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const elem = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > maxWidth) {
+                            height = Math.round(height * (maxWidth / width));
+                            width = maxWidth;
+                        }
+
+                        elem.width = width;
+                        elem.height = height;
+                        const ctx = elem.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // Retorna base64 JPEG calidad 0.6
+                        resolve(elem.toDataURL('image/jpeg', 0.6));
+                    };
+                    img.onerror = error => reject(error);
+                };
+            });
+        }
+
+        async function runOCR(file) {
             document.getElementById('ocr-loading').classList.remove('hidden');
+            document.getElementById('scanner-line').style.display = 'block';
 
             try {
-                // Iniciar Tesseract
-                /* Nota: En un entorno real, los workers se descargan dinámicamente. 
-                   La primera vez tardará un poco en cargar el modelo de lenguaje. */
-                
-                const result = await Tesseract.recognize(
-                    file,
-                    'spa', // Español
-                    { 
-                        logger: m => {
-                            // Actualizar barra de progreso aquí, dentro de la llamada correcta
-                            if(m.status === 'recognizing text'){
-                                const pct = Math.round(m.progress * 100);
-                                const progressEl = document.getElementById('ocr-progress');
-                                const statusEl = document.getElementById('ocr-status-text');
-                                
-                                if(progressEl) progressEl.style.width = pct + '%';
-                                if(statusEl) statusEl.innerText = `Leyendo... ${pct}%`;
-                            }
+                const result = await Tesseract.recognize(file, 'spa', {
+                    logger: m => {
+                        if(m.status === 'recognizing text'){
+                            const pct = Math.round(m.progress * 100);
+                            document.getElementById('ocr-progress').style.width = pct + '%';
+                            document.getElementById('ocr-status-text').innerText = `Analizando... ${pct}%`;
                         }
                     }
-                );
-                
+                });
                 processOCRText(result.data.text);
-
             } catch (error) {
                 console.error(error);
-                showToast("Error al leer la imagen. Intenta manual.", true);
+                showToast("No se pudo leer la imagen automáticamente.", true);
             } finally {
                 document.getElementById('ocr-loading').classList.add('hidden');
                 document.getElementById('scanner-line').style.display = 'none';
@@ -293,84 +436,81 @@
             document.getElementById('preview-container').classList.add('hidden');
             document.getElementById('expense-form').reset();
             document.getElementById('date').valueAsDate = new Date();
-            // Resetear barra de progreso visualmente
+            toggleOtherProject(); 
             document.getElementById('ocr-progress').style.width = '0%';
-            document.getElementById('ocr-status-text').innerText = 'Analizando imagen...';
+            currentImageCompressed = null;
         }
 
-        // --- 3. PROCESAMIENTO INTELIGENTE DE DATOS (REGEX) ---
         function processOCRText(text) {
-            console.log("Texto extraído:", text);
-            const lines = text.split('\n');
-            
-            // A. Buscar Total (Busca patrones de dinero y palabras clave como Total, Venta, Monto)
-            // Regex busca números con decimales, asumiendo Q o $ opcionales
-            const moneyRegex = /[0-9]+[.,][0-9]{2}/g;
-            let maxAmount = 0;
-            
-            // Estrategia simple: Buscar el número más alto que suele ser el total, 
-            // priorizando líneas que dicen "Total"
-            const matches = text.match(moneyRegex);
-            if (matches) {
-                const numbers = matches.map(n => parseFloat(n.replace(',', '.')));
-                maxAmount = Math.max(...numbers);
+            const cleanText = text.replace(/[\r\n]+/g, '\n'); 
+            // 1. Total
+            const moneyMatches = cleanText.match(/[0-9]{1,3}(?:[,.][0-9]{3})*[.,][0-9]{2}/g);
+            if (moneyMatches) {
+                const values = moneyMatches.map(v => parseFloat(v.replace(/,/g, ''))); 
+                const maxVal = Math.max(...values.filter(v => !isNaN(v)));
+                if(maxVal > 0) document.getElementById('amount').value = maxVal.toFixed(2);
             }
-            
-            if (maxAmount > 0) {
-                document.getElementById('amount').value = maxAmount.toFixed(2);
-            }
-
-            // B. Buscar Fecha (DD/MM/YYYY o DD-MM-YYYY)
-            const dateRegex = /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/;
-            const dateMatch = text.match(dateRegex);
-            
+            // 2. Fecha
+            const dateMatch = cleanText.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
             if (dateMatch) {
-                let year = dateMatch[3];
-                if(year.length === 2) year = "20" + year; // Asumir 20xx
-                
-                // Formato para input date: YYYY-MM-DD
-                const formattedDate = `${year}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`;
-                document.getElementById('date').value = formattedDate;
+                let y = dateMatch[3];
+                if(y.length === 2) y = "20" + y;
+                document.getElementById('date').value = `${y}-${dateMatch[2].padStart(2,'0')}-${dateMatch[1].padStart(2,'0')}`;
             }
-
-            // C. Buscar Factura (Palabras clave: Factura, Fac, No, Doc)
-            const invoiceRegex = /(?:factura|fac|doc|no\.?)\s*[:\#]?\s*([A-Z0-9\-]+)/i;
-            const invoiceMatch = text.match(invoiceRegex);
-            if (invoiceMatch && invoiceMatch[1].length > 3) {
-                document.getElementById('docNo').value = invoiceMatch[1];
-            } else {
-                // Intento secundario: buscar series largas de números
-                const longNumber = text.match(/\b\d{6,15}\b/);
-                if(longNumber) document.getElementById('docNo').value = longNumber[0];
+            // 3. DTE
+            let dteFound = "";
+            const dteRegex = /(?:DTE\s*No\.?|Documento\s*No\.?|Factura\s*No\.?|Serie)\s*[:\.]?\s*([A-Z0-9\-]+)/i;
+            const matchA = cleanText.match(dteRegex);
+            if (matchA && matchA[1].length > 4) dteFound = matchA[1];
+            else {
+                const uuidRegex = /\b[A-F0-9]{8,}(?:-[A-F0-9]{4})?\b/i; 
+                const matchB = cleanText.match(uuidRegex);
+                if (matchB) dteFound = matchB[0];
             }
-
-            showToast("Datos extraídos. ¡Verifica por favor!");
+            if (dteFound) {
+                document.getElementById('docNo').value = dteFound;
+                showToast("¡DTE detectado!");
+            }
         }
 
-        // --- 4. GESTIÓN DE DATOS Y UI ---
+        // --- GUARDADO LOCAL ---
         function saveExpense(e) {
             e.preventDefault();
             
+            const projectSelect = document.getElementById('project');
+            const projectOther = document.getElementById('otherProjectInput');
+            const finalProject = (projectSelect.value === 'Otro') ? projectOther.value : projectSelect.value;
+
+            if(!finalProject) { showToast("Especifica el nombre del proyecto", true); return; }
+
+            // Validar tamaño de localStorage (Max ~5MB)
+            // Si la imagen comprimida pesa 100kb, podemos guardar ~50 recibos.
+            
             const expense = {
                 id: Date.now(),
-                date: document.getElementById('date').value, // YYYY-MM-DD
+                date: document.getElementById('date').value,
                 description: document.getElementById('description').value,
                 docNo: document.getElementById('docNo').value || "S/N",
-                project: document.getElementById('project').value,
+                project: finalProject, 
                 amount: parseFloat(document.getElementById('amount').value),
-                requester: document.getElementById('requester').value
+                requester: document.getElementById('requester').value,
+                image: currentImageCompressed // Guardamos la versión comprimida
             };
 
-            // Formatear fecha para visualización (DD/MM)
-            const d = new Date(expense.date + 'T00:00:00'); // Fix timezone issue
-            expense.displayDate = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}`;
-
-            expenses.push(expense);
-            localStorage.setItem('expenses', JSON.stringify(expenses));
-            
-            renderList();
-            resetImage(); // Limpia formulario y foto
-            showToast("Gasto guardado correctamente");
+            try {
+                expenses.push(expense);
+                localStorage.setItem('expenses', JSON.stringify(expenses));
+                renderList();
+                resetImage();
+                showToast("Guardado (con foto)");
+            } catch (err) {
+                if (err.name === 'QuotaExceededError') {
+                    showToast("¡Memoria llena! Sincroniza o borra registros.", true);
+                    expenses.pop(); // Revertir push
+                } else {
+                    console.error(err);
+                }
+            }
         }
 
         function renderList() {
@@ -378,7 +518,7 @@
             const totalEl = document.getElementById('total-sum');
             
             if (expenses.length === 0) {
-                list.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-400 text-xs">No hay registros</td></tr>';
+                list.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-gray-400 text-xs italic">No hay facturas pendientes</td></tr>';
                 totalEl.innerText = "Total: Q0.00";
                 return;
             }
@@ -386,17 +526,25 @@
             let html = '';
             let total = 0;
 
-            // Ordenar por fecha reciente
             expenses.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(item => {
                 total += item.amount;
+                const d = new Date(item.date + 'T00:00:00');
+                const displayDate = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}`;
+                
+                // Icono de foto si existe
+                const photoIcon = item.image ? '<span class="material-icons-round text-xs text-teal-500">photo_camera</span>' : '';
+
                 html += `
                 <tr class="bg-white border-b hover:bg-gray-50">
-                    <td class="px-4 py-3 font-medium text-gray-900">${item.displayDate}</td>
-                    <td class="px-4 py-3 truncate max-w-[120px]">${item.description}</td>
-                    <td class="px-4 py-3 text-right font-bold text-teal-600">Q${item.amount.toFixed(2)}</td>
-                    <td class="px-4 py-3 text-center">
-                        <button onclick="deleteExpense(${item.id})" class="text-red-500 hover:text-red-700">
-                            <span class="material-icons-round text-lg">delete</span>
+                    <td class="px-3 py-3 font-medium text-gray-900">${displayDate}</td>
+                    <td class="px-3 py-3">
+                        <div class="truncate max-w-[100px] font-medium flex items-center gap-1">${item.description} ${photoIcon}</div>
+                        <div class="text-[10px] text-gray-400">${item.project}</div>
+                    </td>
+                    <td class="px-3 py-3 text-right font-bold text-teal-600">Q${item.amount.toFixed(2)}</td>
+                    <td class="px-2 py-3 text-center">
+                        <button onclick="deleteExpense(${item.id})" class="text-gray-300 hover:text-red-500 transition">
+                            <span class="material-icons-round text-lg">close</span>
                         </button>
                     </td>
                 </tr>
@@ -408,7 +556,7 @@
         }
 
         function deleteExpense(id) {
-            if(confirm('¿Eliminar este registro?')) {
+            if(confirm('¿Eliminar registro?')) {
                 expenses = expenses.filter(e => e.id !== id);
                 localStorage.setItem('expenses', JSON.stringify(expenses));
                 renderList();
@@ -416,79 +564,88 @@
         }
 
         function clearData() {
-            if(confirm('¿Estás seguro de borrar TODOS los datos?')) {
+            if(confirm('¿Borrar TODO el historial local?')) {
                 expenses = [];
                 localStorage.removeItem('expenses');
                 renderList();
             }
         }
 
-        // --- 5. EXPORTACIÓN (EXCEL / SHEETS) ---
-        
-        function exportToCSV() {
-            if (expenses.length === 0) { showToast("No hay datos para exportar", true); return; }
+        // --- SINCRONIZACIÓN AUTOMÁTICA ---
+        function syncToSheet() {
+            if (expenses.length === 0) { showToast("Nada que sincronizar", true); return; }
+            if (!SCRIPT_URL) {
+                toggleConfigModal();
+                alert("Falta configuración. Ingresa la URL del Script.");
+                return;
+            }
 
-            // Headers igual a la imagen del usuario
-            let csvContent = "data:text/csv;charset=utf-8,";
-            csvContent += "Fecha,Descripción del Gasto,Doc. No.,Programa / Proyecto,Valor,Solicitante\n";
+            const statusEl = document.getElementById('sync-status');
+            const overlay = document.getElementById('sync-overlay');
+            overlay.classList.remove('hidden');
+            statusEl.innerText = `Subiendo ${expenses.length} facturas...`;
 
-            expenses.forEach(row => {
-                // Formatear fecha a DD/MM/YYYY para Excel ES
-                const dateParts = row.date.split('-');
-                const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`; // DD/MM/YYYY
-
-                const rowData = [
-                    formattedDate,
-                    `"${row.description}"`, // Comillas para evitar problemas con comas internas
-                    `"${row.docNo}"`,       // Formato texto para números largos
-                    row.project,
-                    `Q${row.amount.toFixed(2)}`,
-                    row.requester
-                ];
-                csvContent += rowData.join(",") + "\n";
+            // Preparar payload
+            const dataPayload = expenses.map(row => {
+                const d = row.date.split('-'); 
+                return {
+                    formattedDate: `${d[2]}/${d[1]}`, // DD/MM
+                    description: row.description,
+                    docNo: row.docNo,
+                    project: row.project,
+                    amount: row.amount,
+                    requester: row.requester,
+                    image: row.image // Base64 comprimido
+                };
             });
 
+            fetch(SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(dataPayload)
+            })
+            .then(() => {
+                overlay.classList.add('hidden');
+                if(confirm('¡Enviado a Drive con éxito!\n\nSe han subido los datos y las fotos.\n¿Limpiar lista local?')) {
+                    expenses = [];
+                    localStorage.setItem('expenses', JSON.stringify([]));
+                    renderList();
+                }
+            })
+            .catch(error => {
+                overlay.classList.add('hidden');
+                console.error("Error:", error);
+                alert("Error de conexión. Verifica la URL o tu internet.");
+            });
+        }
+
+        function exportToCSV() {
+            if (expenses.length === 0) return;
+            let csvContent = "data:text/csv;charset=utf-8,Fecha,Descripción,Doc No,Proyecto,Valor,Solicitante\n";
+            expenses.forEach(r => {
+                csvContent += `${r.date},"${r.description}","${r.docNo}",${r.project},Q${r.amount.toFixed(2)},${r.requester}\n`;
+            });
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
             link.setAttribute("href", encodedUri);
             link.setAttribute("download", "reintegro_gastos.csv");
             document.body.appendChild(link);
             link.click();
-            document.body.removeChild(link);
+            link.remove();
         }
 
-        function copyToClipboard() {
-            if (expenses.length === 0) { showToast("No hay datos", true); return; }
-
-            let text = "";
-            expenses.forEach(row => {
-                const dateParts = row.date.split('-');
-                const formattedDate = `${dateParts[2]}/${dateParts[1]}`; // DD/MM
-                
-                // Formato tabulado para pegar directo en celdas de Sheets
-                text += `${formattedDate}\t${row.description}\t${row.docNo}\t${row.project}\tQ${row.amount.toFixed(2)}\t${row.requester}\n`;
-            });
-
-            navigator.clipboard.writeText(text).then(() => {
-                showToast("¡Copiado! Pega (Ctrl+V) en tu Google Sheet");
-            }, () => {
-                showToast("Error al copiar", true);
-            });
-        }
-
-        // Utilidad Toast
         function showToast(msg, isError = false) {
             const toast = document.getElementById('toast');
             const msgEl = document.getElementById('toast-message');
-            msgEl.innerText = msg;
+            const icon = toast.querySelector('.material-icons-round');
             
-            if(isError) toast.querySelector('.material-icons-round').classList.replace('text-green-400', 'text-red-400');
-            else toast.querySelector('.material-icons-round').classList.replace('text-red-400', 'text-green-400');
+            msgEl.innerText = msg;
+            icon.innerText = isError ? 'error_outline' : 'check_circle';
+            icon.className = `material-icons-round ${isError ? 'text-red-400' : 'text-green-400'}`;
 
             toast.classList.remove('opacity-0');
-            setTimeout(() => {
-                toast.classList.add('opacity-0');
-            }, 3000);
+            setTimeout(() => toast.classList.add('opacity-0'), 4000);
         }
 
     </script>
