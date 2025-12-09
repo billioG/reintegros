@@ -59,7 +59,7 @@
         <div class="flex justify-between items-center max-w-2xl mx-auto">
             <h1 class="text-lg font-bold flex items-center gap-2 text-teal-400">
                 <span class="material-icons-round">receipt_long</span>
-                Reintegros v3.1
+                Reintegros v3.2
             </h1>
             <div class="flex items-center gap-3">
                 <button onclick="toggleConfigModal()" class="text-gray-400 hover:text-white transition">
@@ -266,6 +266,7 @@
     <script>
         // --- 1. ESTADO GLOBAL ---
         let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
+        // SE ACTUALIZÓ LA URL POR DEFECTO CON LA QUE PROPORCIONASTE
         const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbx6FwR-Q8sAXha8uPa7OW-sgWe8UAR9NdJRN_F0TdPpXIXijSX0wkKyD6aMPOSm1ocL/exec";
         let SCRIPT_URL = localStorage.getItem('googleScriptUrl') || DEFAULT_URL;
 
@@ -278,7 +279,12 @@
         document.addEventListener('DOMContentLoaded', () => {
             renderList();
             document.getElementById('date').valueAsDate = new Date();
-            document.getElementById('script-url-input').value = SCRIPT_URL;
+            // Asegurarse de usar la nueva URL si no se ha guardado otra
+            if (localStorage.getItem('googleScriptUrl') !== SCRIPT_URL) {
+                document.getElementById('script-url-input').value = SCRIPT_URL;
+            } else {
+                document.getElementById('script-url-input').value = localStorage.getItem('googleScriptUrl');
+            }
             log("Listo. Esperando factura.");
         });
 
