@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Reintegro de Gastos PWA</title>
+    
+    <!-- Tailwind CSS (via CDN para estilizado rápido y responsivo) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tesseract.js para OCR (Reconocimiento de Texto) -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+
+    <!-- Google Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+    <style>
+        /* Estilos personalizados para sensación de App Nativa */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f3f4f6;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .scan-overlay {
+            background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0));
+        }
+
+        /* Animación de escaneo */
+        @keyframes scan {
+            0% { top: 0%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+        
+        .scanner-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: #0ea5e9;
+            box-shadow: 0 0 10px #0ea5e9;
+            animation: scan 2s infinite linear;
+            display: none;
+        }
+
+        .loader {
+            border-top-color: #0ea5e9;
+            -webkit-animation: spinner 1.5s linear infinite;
+            animation: spinner 1.5s linear infinite;
+        }
+
+        @keyframes spinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Ocultar input file feo */
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body class="pb-20">
+
+    <!-- Header -->
+    <header class="bg-teal-600 text-white p-4 shadow-md sticky top-0 z-50">
+        <div class="flex justify-between items-center max-w-2xl mx-auto">
+            <h1 class="text-lg font-bold flex items-center gap-2">
+                <span class="material-icons-round">receipt_long</span>
+                Reintegro de Gastos
+            </h1>
+            <div class="text-xs opacity-80 bg-teal-700 px-2 py-1 rounded">
+                v1.0
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-2xl mx-auto p-4">
+
+        <!-- Sección de Cámara / Captura -->
+        <div class="bg-white rounded-xl shadow-sm p-6 mb-6 text-center border-2 border-dashed border-gray-300 relative overflow-hidden" id="camera-section">
+            <div class="scanner-line" id="scanner-line"></div>
+            
+            <div id="preview-container" class="hidden mb-4 relative">
+                <img id="image-preview" class="mx-auto max-h-64 rounded-lg shadow-md object-contain" alt="Vista previa factura">
+                <button onclick="resetImage()" class="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full shadow hover:bg-red-600 transition">
+                    <span class="material-icons-round text-sm">close</span>
+                </button>
+            </div>
+
+            <div id="upload-placeholder">
+                <div class="bg-teal-50 text-teal-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <span class="material-icons-round text-3xl">add_a_photo</span>
+                </div>
+                <h2 class="text-gray-800 font-medium mb-1">Escanear Factura</h2>
+                <p class="text-gray-500 text-sm mb-4">Toma una foto para extraer datos automáticamente</p>
+                
+                <label for="camera-input" class="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-full font-semibold shadow-lg active:scale-95 transition cursor-pointer hover:bg-teal-700">
+                    <span class="material-icons-round">camera_alt</span>
+                    Abrir Cámara
+                </label>
+                <input type="file" id="camera-input" accept="image/*" capture="environment" onchange="handleImageUpload(event)">
+            </div>
+
+            <!-- Loading OCR State -->
+            <div id="ocr-loading" class="hidden mt-4">
+                <div class="flex justify-center items-center gap-3">
+                    <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6"></div>
+                    <span class="text-sm text-gray-600 font-medium" id="ocr-status-text">Analizando imagen...</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-3">
+                    <div class="bg-teal-600 h-1.5 rounded-full" id="ocr-progress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Formulario de Datos -->
+        <form id="expense-form" class="bg-white rounded-xl shadow-sm p-5 space-y-4" onsubmit="saveExpense(event)">
+            <h3 class="text-gray-800 font-bold border-b pb-2 mb-2 flex items-center gap-2">
+                <span class="material-icons-round text-teal-600">edit_note</span>
+                Detalles del Reintegro
+            </h3>
+
+            <!-- Fila: Fecha y Doc No -->
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Fecha</label>
+                    <input type="date" id="date" required class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Doc. No.</label>
+                    <input type="text" id="docNo" placeholder="Ej: 123456" class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+                </div>
+            </div>
+
+            <!-- Descripción -->
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Descripción del Gasto</label>
+                <input type="text" id="description" required placeholder="Ej: Compra de materiales..." class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+            </div>
+
+            <!-- Proyecto y Solicitante -->
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Proyecto</label>
+                    <select id="project" class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+                        <option value="1bot">1bot</option>
+                        <option value="BI">BI</option>
+                        <option value="ATT">ATT</option>
+                        <option value="Admin">Administración</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Solicitante</label>
+                    <input type="text" id="requester" value="Billy" class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5">
+                </div>
+            </div>
+
+            <!-- Valor Total -->
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Valor Total (Q)</label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                        <span class="text-gray-500 font-bold">Q</span>
+                    </div>
+                    <input type="number" id="amount" step="0.01" required placeholder="0.00" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-lg font-bold rounded-lg focus:ring-teal-500 focus:border-teal-500 p-2.5 pl-8">
+                </div>
+            </div>
+
+            <!-- Botón Guardar -->
+            <button type="submit" class="w-full text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:ring-teal-300 font-medium rounded-lg text-sm px-5 py-3.5 text-center flex justify-center items-center gap-2 shadow-lg mt-2">
+                <span class="material-icons-round">save</span>
+                Guardar Reintegro
+            </button>
+        </form>
+
+        <!-- Historial y Exportación -->
+        <div class="mt-8">
+            <div class="flex justify-between items-end mb-4">
+                <h3 class="text-lg font-bold text-gray-800">Registros Pendientes</h3>
+                <div class="flex gap-2">
+                     <button onclick="copyToClipboard()" class="text-xs bg-white text-teal-600 border border-teal-600 px-3 py-1.5 rounded hover:bg-teal-50 flex items-center gap-1">
+                        <span class="material-icons-round text-sm">content_copy</span> Copiar
+                    </button>
+                    <button onclick="exportToCSV()" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 flex items-center gap-1 shadow">
+                        <span class="material-icons-round text-sm">file_download</span> Excel
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left text-gray-500">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                            <tr>
+                                <th scope="col" class="px-4 py-3">Fecha</th>
+                                <th scope="col" class="px-4 py-3">Desc.</th>
+                                <th scope="col" class="px-4 py-3 text-right">Valor</th>
+                                <th scope="col" class="px-4 py-3 text-center">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expense-list">
+                            <!-- Los items se insertan aquí con JS -->
+                            <tr>
+                                <td colspan="4" class="text-center py-4 text-gray-400">No hay registros pendientes</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="bg-gray-50 px-4 py-2 border-t text-right font-bold text-gray-700" id="total-sum">
+                    Total: Q0.00
+                </div>
+            </div>
+            
+            <button onclick="clearData()" class="mt-4 text-xs text-red-500 underline w-full text-center">Borrar todos los datos locales</button>
+        </div>
+
+    </main>
+
+    <!-- Notificación Toast -->
+    <div id="toast" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-xl text-sm transition-opacity duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-2">
+        <span class="material-icons-round text-green-400 text-sm">check_circle</span>
+        <span id="toast-message">Guardado</span>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURACIÓN Y VARIABLES ---
+        let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
+        
+        // Al cargar la página
+        document.addEventListener('DOMContentLoaded', () => {
+            renderList();
+            // Poner fecha de hoy por defecto
+            document.getElementById('date').valueAsDate = new Date();
+        });
+
+        // --- 2. LÓGICA DE CÁMARA Y OCR ---
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Mostrar UI de carga y preview
+            const reader = new FileReader();
+            reader.onload = function(e){
+                document.getElementById('image-preview').src = e.target.result;
+                document.getElementById('upload-placeholder').classList.add('hidden');
+                document.getElementById('preview-container').classList.remove('hidden');
+                document.getElementById('scanner-line').style.display = 'block';
+            }
+            reader.readAsDataURL(file);
+
+            document.getElementById('ocr-loading').classList.remove('hidden');
+
+            try {
+                // Iniciar Tesseract
+                /* Nota: En un entorno real, los workers se descargan dinámicamente. 
+                   La primera vez tardará un poco en cargar el modelo de lenguaje. */
+                
+                const result = await Tesseract.recognize(
+                    file,
+                    'spa', // Español
+                    { 
+                        logger: m => {
+                            // Actualizar barra de progreso aquí, dentro de la llamada correcta
+                            if(m.status === 'recognizing text'){
+                                const pct = Math.round(m.progress * 100);
+                                const progressEl = document.getElementById('ocr-progress');
+                                const statusEl = document.getElementById('ocr-status-text');
+                                
+                                if(progressEl) progressEl.style.width = pct + '%';
+                                if(statusEl) statusEl.innerText = `Leyendo... ${pct}%`;
+                            }
+                        }
+                    }
+                );
+                
+                processOCRText(result.data.text);
+
+            } catch (error) {
+                console.error(error);
+                showToast("Error al leer la imagen. Intenta manual.", true);
+            } finally {
+                document.getElementById('ocr-loading').classList.add('hidden');
+                document.getElementById('scanner-line').style.display = 'none';
+            }
+        }
+
+        function resetImage() {
+            document.getElementById('camera-input').value = "";
+            document.getElementById('upload-placeholder').classList.remove('hidden');
+            document.getElementById('preview-container').classList.add('hidden');
+            document.getElementById('expense-form').reset();
+            document.getElementById('date').valueAsDate = new Date();
+            // Resetear barra de progreso visualmente
+            document.getElementById('ocr-progress').style.width = '0%';
+            document.getElementById('ocr-status-text').innerText = 'Analizando imagen...';
+        }
+
+        // --- 3. PROCESAMIENTO INTELIGENTE DE DATOS (REGEX) ---
+        function processOCRText(text) {
+            console.log("Texto extraído:", text);
+            const lines = text.split('\n');
+            
+            // A. Buscar Total (Busca patrones de dinero y palabras clave como Total, Venta, Monto)
+            // Regex busca números con decimales, asumiendo Q o $ opcionales
+            const moneyRegex = /[0-9]+[.,][0-9]{2}/g;
+            let maxAmount = 0;
+            
+            // Estrategia simple: Buscar el número más alto que suele ser el total, 
+            // priorizando líneas que dicen "Total"
+            const matches = text.match(moneyRegex);
+            if (matches) {
+                const numbers = matches.map(n => parseFloat(n.replace(',', '.')));
+                maxAmount = Math.max(...numbers);
+            }
+            
+            if (maxAmount > 0) {
+                document.getElementById('amount').value = maxAmount.toFixed(2);
+            }
+
+            // B. Buscar Fecha (DD/MM/YYYY o DD-MM-YYYY)
+            const dateRegex = /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/;
+            const dateMatch = text.match(dateRegex);
+            
+            if (dateMatch) {
+                let year = dateMatch[3];
+                if(year.length === 2) year = "20" + year; // Asumir 20xx
+                
+                // Formato para input date: YYYY-MM-DD
+                const formattedDate = `${year}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`;
+                document.getElementById('date').value = formattedDate;
+            }
+
+            // C. Buscar Factura (Palabras clave: Factura, Fac, No, Doc)
+            const invoiceRegex = /(?:factura|fac|doc|no\.?)\s*[:\#]?\s*([A-Z0-9\-]+)/i;
+            const invoiceMatch = text.match(invoiceRegex);
+            if (invoiceMatch && invoiceMatch[1].length > 3) {
+                document.getElementById('docNo').value = invoiceMatch[1];
+            } else {
+                // Intento secundario: buscar series largas de números
+                const longNumber = text.match(/\b\d{6,15}\b/);
+                if(longNumber) document.getElementById('docNo').value = longNumber[0];
+            }
+
+            showToast("Datos extraídos. ¡Verifica por favor!");
+        }
+
+        // --- 4. GESTIÓN DE DATOS Y UI ---
+        function saveExpense(e) {
+            e.preventDefault();
+            
+            const expense = {
+                id: Date.now(),
+                date: document.getElementById('date').value, // YYYY-MM-DD
+                description: document.getElementById('description').value,
+                docNo: document.getElementById('docNo').value || "S/N",
+                project: document.getElementById('project').value,
+                amount: parseFloat(document.getElementById('amount').value),
+                requester: document.getElementById('requester').value
+            };
+
+            // Formatear fecha para visualización (DD/MM)
+            const d = new Date(expense.date + 'T00:00:00'); // Fix timezone issue
+            expense.displayDate = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}`;
+
+            expenses.push(expense);
+            localStorage.setItem('expenses', JSON.stringify(expenses));
+            
+            renderList();
+            resetImage(); // Limpia formulario y foto
+            showToast("Gasto guardado correctamente");
+        }
+
+        function renderList() {
+            const list = document.getElementById('expense-list');
+            const totalEl = document.getElementById('total-sum');
+            
+            if (expenses.length === 0) {
+                list.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-400 text-xs">No hay registros</td></tr>';
+                totalEl.innerText = "Total: Q0.00";
+                return;
+            }
+
+            let html = '';
+            let total = 0;
+
+            // Ordenar por fecha reciente
+            expenses.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(item => {
+                total += item.amount;
+                html += `
+                <tr class="bg-white border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium text-gray-900">${item.displayDate}</td>
+                    <td class="px-4 py-3 truncate max-w-[120px]">${item.description}</td>
+                    <td class="px-4 py-3 text-right font-bold text-teal-600">Q${item.amount.toFixed(2)}</td>
+                    <td class="px-4 py-3 text-center">
+                        <button onclick="deleteExpense(${item.id})" class="text-red-500 hover:text-red-700">
+                            <span class="material-icons-round text-lg">delete</span>
+                        </button>
+                    </td>
+                </tr>
+                `;
+            });
+
+            list.innerHTML = html;
+            totalEl.innerText = `Total: Q${total.toFixed(2)}`;
+        }
+
+        function deleteExpense(id) {
+            if(confirm('¿Eliminar este registro?')) {
+                expenses = expenses.filter(e => e.id !== id);
+                localStorage.setItem('expenses', JSON.stringify(expenses));
+                renderList();
+            }
+        }
+
+        function clearData() {
+            if(confirm('¿Estás seguro de borrar TODOS los datos?')) {
+                expenses = [];
+                localStorage.removeItem('expenses');
+                renderList();
+            }
+        }
+
+        // --- 5. EXPORTACIÓN (EXCEL / SHEETS) ---
+        
+        function exportToCSV() {
+            if (expenses.length === 0) { showToast("No hay datos para exportar", true); return; }
+
+            // Headers igual a la imagen del usuario
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Fecha,Descripción del Gasto,Doc. No.,Programa / Proyecto,Valor,Solicitante\n";
+
+            expenses.forEach(row => {
+                // Formatear fecha a DD/MM/YYYY para Excel ES
+                const dateParts = row.date.split('-');
+                const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`; // DD/MM/YYYY
+
+                const rowData = [
+                    formattedDate,
+                    `"${row.description}"`, // Comillas para evitar problemas con comas internas
+                    `"${row.docNo}"`,       // Formato texto para números largos
+                    row.project,
+                    `Q${row.amount.toFixed(2)}`,
+                    row.requester
+                ];
+                csvContent += rowData.join(",") + "\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "reintegro_gastos.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function copyToClipboard() {
+            if (expenses.length === 0) { showToast("No hay datos", true); return; }
+
+            let text = "";
+            expenses.forEach(row => {
+                const dateParts = row.date.split('-');
+                const formattedDate = `${dateParts[2]}/${dateParts[1]}`; // DD/MM
+                
+                // Formato tabulado para pegar directo en celdas de Sheets
+                text += `${formattedDate}\t${row.description}\t${row.docNo}\t${row.project}\tQ${row.amount.toFixed(2)}\t${row.requester}\n`;
+            });
+
+            navigator.clipboard.writeText(text).then(() => {
+                showToast("¡Copiado! Pega (Ctrl+V) en tu Google Sheet");
+            }, () => {
+                showToast("Error al copiar", true);
+            });
+        }
+
+        // Utilidad Toast
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-message');
+            msgEl.innerText = msg;
+            
+            if(isError) toast.querySelector('.material-icons-round').classList.replace('text-green-400', 'text-red-400');
+            else toast.querySelector('.material-icons-round').classList.replace('text-red-400', 'text-green-400');
+
+            toast.classList.remove('opacity-0');
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+            }, 3000);
+        }
+
+    </script>
+</body>
+</html>
