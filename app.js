@@ -160,7 +160,93 @@ function setupEventListeners() {
 }
 
 // ============================================
-// CÁMARA Y OCR
+// PREPROCESAMIENTO DE IMAGEN
+// ============================================
+
+function preprocessImage(imageElement) {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Aumentar resolución para mejor OCR
+    const scaleFactor = 2;
+    canvas.width = imageElement.width * scaleFactor;
+    canvas.height = imageElement.height * scaleFactor;
+    
+    // Dibujar imagen escalada
+    ctx.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
+    
+    // Obtener datos de píxeles
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    // PASO 1: Convertir a escala de grises
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      data[i] = gray;
+      data[i + 1] = gray;
+      data[i + 2] = gray;
+    }
+    
+    // PASO 2: Aumentar contraste (ajuste de histograma)
+    const contrastFactor = 1.5;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, (data[i] - 128) * contrastFactor + 128));
+      data[i + 1] = data[i];
+      data[i + 2] = data[i];
+    }
+    
+    // PASO 3: Umbralización (binarización) - texto negro sobre fondo blanco
+    const threshold = 128;
+    for (let i = 0; i < data.length; i += 4) {
+      const value = data[i] > threshold ? 255 : 0;
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = value;
+    }
+    
+    // PASO 4: Aplicar nitidez (sharpening)
+    const sharpenKernel = [
+      0, -1, 0,
+      -1, 5, -1,
+      0, -1, 0
+    ];
+    
+    const tempData = new Uint8ClampedArray(data);
+    const width = canvas.width;
+    
+    for (let y = 1; y < canvas.height - 1; y++) {
+      for (let x = 1; x < canvas.width - 1; x++) {
+        let sum = 0;
+        for (let ky = -1; ky <= 1; ky++) {
+          for (let kx = -1; kx <= 1; kx++) {
+            const idx = ((y + ky) * width + (x + kx)) * 4;
+            const kernelIdx = (ky + 1) * 3 + (kx + 1);
+            sum += tempData[idx] * sharpenKernel[kernelIdx];
+          }
+        }
+        const idx = (y * width + x) * 4;
+        const sharpened = Math.min(255, Math.max(0, sum));
+        data[idx] = sharpened;
+        data[idx + 1] = sharpened;
+        data[idx + 2] = sharpened;
+      }
+    }
+    
+    // Aplicar cambios
+    ctx.putImageData(imageData, 0, 0);
+    
+    console.log('✓ Imagen preprocesada: escala de grises + contraste + umbralización + nitidez');
+    
+    // Convertir canvas a blob
+    canvas.toBlob((blob) => {
+      resolve(blob);
+    }, 'image/png');
+  });
+}
+
+// ============================================
+// CÁMARA Y OCR CON PREPROCESAMIENTO
 // ============================================
 
 function openCamera() {
@@ -180,46 +266,63 @@ function handleImageCapture(e) {
     document.getElementById('imagePreview').style.display = 'block';
     document.querySelector('.capture-section').style.display = 'none';
     document.getElementById('ocrStatus').style.display = 'flex';
+    document.getElementById('ocrStatus').innerHTML =
+      '<div class="spinner"></div><span>Preparando imagen...</span>';
 
-    await processOCR(file);
+    // Esperar a que la imagen se cargue completamente
+    img.onload = async () => {
+      await processOCR(img);
+    };
   };
   reader.readAsDataURL(file);
 }
 
-async function processOCR(imageFile) {
+async function processOCR(imageElement) {
   try {
-    console.log('Iniciando OCR...');
+    console.log('=== INICIANDO OCR CON PREPROCESAMIENTO ===');
     console.log('Tesseract cargado:', typeof Tesseract);
     
-    // Verificar que Tesseract esté disponible
     if (typeof Tesseract === 'undefined') {
-      throw new Error('Tesseract no está cargado');
+      throw new Error('Tesseract no está cargado. Verifica que esté en index.html');
     }
     
-    const result = await Tesseract.recognize(imageFile, 'spa', {
+    document.getElementById('ocrStatus').innerHTML =
+      '<div class="spinner"></div><span>Mejorando calidad de imagen...</span>';
+    
+    // Preprocesar imagen para mejorar calidad
+    const preprocessedBlob = await preprocessImage(imageElement);
+    
+    console.log('✓ Imagen preprocesada exitosamente');
+    
+    document.getElementById('ocrStatus').innerHTML =
+      '<div class="spinner"></div><span>Extrayendo texto...</span>';
+    
+    // Ejecutar OCR con imagen preprocesada
+    const result = await Tesseract.recognize(preprocessedBlob, 'spa', {
       logger: m => {
         if (m.status === 'recognizing text') {
           const progress = Math.round(m.progress * 100);
           console.log(`OCR: ${progress}%`);
           document.getElementById('ocrStatus').innerHTML = 
-            `<div class="spinner"></div><span>Extrayendo datos... ${progress}%</span>`;
+            `<div class="spinner"></div><span>Leyendo texto... ${progress}%</span>`;
         }
       }
     });
     
-    console.log('Resultado OCR completo:', result);
+    console.log('✓ OCR completado');
     
     let text = '';
     
-    // Compatibilidad con diferentes versiones de Tesseract
     if (result.data && result.data.text) {
       text = result.data.text;
     } else if (result.text) {
       text = result.text;
     }
     
-    console.log('Texto OCR extraído:', text);
-    console.log('Longitud del texto:', text.length);
+    console.log('Texto OCR extraído:');
+    console.log(text);
+    console.log('Longitud:', text.length, 'caracteres');
+    console.log('Confianza:', result.data?.confidence || 'N/A');
 
     if (!text || text.trim().length === 0) {
       throw new Error('No se pudo extraer texto de la imagen');
@@ -228,55 +331,67 @@ async function processOCR(imageFile) {
     const extracted = extractInvoiceData(text);
     fillForm(extracted);
 
-    document.getElementById('ocrStatus').style.display = 'none';
-    document.getElementById('dataForm').style.display = 'block';
-    
-  } catch (error) {
-    console.error('Error en OCR:', error);
-    console.error('Stack:', error.stack);
-    
     document.getElementById('ocrStatus').innerHTML =
-      '<span>⚠️ No se pudo leer la imagen. Complete manualmente.</span>';
+      '<span style="color: #10b981;">✓ Datos extraídos exitosamente</span>';
     
     setTimeout(() => {
       document.getElementById('ocrStatus').style.display = 'none';
       document.getElementById('dataForm').style.display = 'block';
-    }, 2500);
+    }, 1500);
+    
+  } catch (error) {
+    console.error('❌ Error en OCR:', error);
+    console.error('Stack:', error.stack);
+    
+    document.getElementById('ocrStatus').innerHTML =
+      '<span style="color: #ef4444;">⚠️ No se pudo leer la imagen. Complete manualmente.</span>';
+    
+    setTimeout(() => {
+      document.getElementById('ocrStatus').style.display = 'none';
+      document.getElementById('dataForm').style.display = 'block';
+    }, 3000);
   }
 }
-
 
 // ============================================
 // EXTRACCIÓN DE DATOS OPTIMIZADA
 // ============================================
+
 function extractInvoiceData(text) {
   const data = { fecha: '', docNo: '', valor: '' };
   const cleanText = text.replace(/[\r\n]+/g, '\n');
-  const lines = cleanText.split('\n').map(l => l.trim());
+  const lines = cleanText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
   console.log('=== EXTRAYENDO DATOS ===');
   console.log('Total de líneas:', lines.length);
 
-  // 1. EXTRAER NÚMERO DE AUTORIZACIÓN (NO. AUTORIZACIÓN)
+  // 1. EXTRAER NÚMERO DE AUTORIZACIÓN
   let dteFound = '';
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
-    // Buscar "NO. AUTORIZACIÓN:" seguido del número
+    // Buscar "NO. AUTORIZACIÓN" o variantes
     if (/NO\.?\s*AUTORIZACI[OÓ]N/i.test(line)) {
       console.log('✓ Línea con NO. AUTORIZACIÓN encontrada:', line);
       
-      // El número puede estar en la misma línea o en las siguientes
-      // Formato: B4681B5E-3614-4ADD-9CCC-E0F5/131 o similar
-      for (let j = i; j < Math.min(i + 3, lines.length); j++) {
+      // Buscar UUID en las próximas 3 líneas
+      for (let j = i; j < Math.min(i + 4, lines.length); j++) {
         const checkLine = lines[j];
         
-        // Buscar UUID formato: XXXXXXXX-XXXX-XXXX-XXXX-XXXX/XXX
+        // UUID formato: XXXXXXXX-XXXX-XXXX-XXXX-XXXX/XXX
         const uuidMatch = checkLine.match(/([A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]+(?:\/\d+)?)/i);
         if (uuidMatch) {
           dteFound = uuidMatch[1];
           console.log('✓ UUID encontrado:', dteFound);
+          break;
+        }
+        
+        // Buscar formato alternativo con guiones y letras
+        const altMatch = checkLine.match(/([A-Z0-9]{4,}-[A-Z0-9]{4,}-[A-Z0-9]{4,}(?:-[A-Z0-9]+)?(?:\/\d+)?)/i);
+        if (altMatch) {
+          dteFound = altMatch[1];
+          console.log('✓ Código alternativo encontrado:', dteFound);
           break;
         }
       }
@@ -284,19 +399,19 @@ function extractInvoiceData(text) {
       if (dteFound) break;
     }
     
-    // Buscar "SERIE:" seguido de código
-    if (/SERIE:/i.test(line)) {
+    // Buscar SERIE
+    if (/SERIE:/i.test(line) && !dteFound) {
       const serieMatch = line.match(/SERIE:\s*([A-Z0-9\-]+)/i);
-      if (serieMatch && !dteFound) {
+      if (serieMatch) {
         dteFound = serieMatch[1];
         console.log('✓ SERIE encontrada:', dteFound);
       }
     }
     
-    // Buscar "NUMERO:" con número largo
-    if (/N[UÚ]MERO:/i.test(line)) {
-      const numMatch = line.match(/N[UÚ]MERO:\s*(\d{8,})/i);
-      if (numMatch && !dteFound) {
+    // Buscar NUMERO
+    if (/N[UÚ]MERO:/i.test(line) && !dteFound) {
+      const numMatch = line.match(/N[UÚ]MERO:\s*(\d{6,}(?:\/\d+)?)/i);
+      if (numMatch) {
         dteFound = numMatch[1];
         console.log('✓ NUMERO encontrado:', dteFound);
       }
@@ -309,45 +424,45 @@ function extractInvoiceData(text) {
     console.log('✗ No se encontró número de autorización/factura');
   }
 
-  // 2. EXTRAER TOTAL (puede aparecer como "TOTAL Q 150.00" o "Q 150.00")
+  // 2. EXTRAER TOTAL
   let valorFound = '';
+  const allMoneyMatches = [];
   
   for (const line of lines) {
-    // Buscar "TOTAL" seguido de Q y número
+    // Buscar línea con "TOTAL"
     if (/TOTAL/i.test(line)) {
-      const totalMatch = line.match(/Q\s*(\d+\.?\d*)/i);
+      console.log('Línea con TOTAL:', line);
+      
+      // Extraer monto con Q
+      const totalMatch = line.match(/Q\s*(\d+(?:[.,]\d+)?)/i);
       if (totalMatch) {
-        const valor = parseFloat(totalMatch[1]);
+        let valor = totalMatch[1].replace(',', '.');
+        valor = parseFloat(valor);
         if (valor > 0 && !isNaN(valor)) {
           valorFound = valor.toFixed(2);
-          console.log('✓ TOTAL encontrado en línea TOTAL:', valorFound, '→', line);
+          console.log('✓ TOTAL encontrado:', valorFound);
           break;
         }
       }
     }
+    
+    // Recolectar todos los montos encontrados
+    const moneyMatches = line.match(/Q\s*(\d+(?:[.,]\d{2})?)/gi);
+    if (moneyMatches) {
+      moneyMatches.forEach(m => {
+        let num = m.replace(/Q\s*/i, '').replace(',', '.');
+        num = parseFloat(num);
+        if (!isNaN(num) && num > 0) {
+          allMoneyMatches.push(num);
+        }
+      });
+    }
   }
   
-  // Si no se encontró en TOTAL, buscar cualquier monto con Q
-  if (!valorFound) {
-    const allMoneyMatches = [];
-    
-    for (const line of lines) {
-      const matches = line.match(/Q\s*(\d+\.\d{2})/gi);
-      if (matches) {
-        matches.forEach(m => {
-          const num = parseFloat(m.replace(/Q\s*/i, ''));
-          if (!isNaN(num) && num > 0) {
-            allMoneyMatches.push(num);
-          }
-        });
-      }
-    }
-    
-    if (allMoneyMatches.length > 0) {
-      // Tomar el valor más grande (usualmente es el total)
-      valorFound = Math.max(...allMoneyMatches).toFixed(2);
-      console.log('✓ TOTAL encontrado (máximo):', valorFound);
-    }
+  // Si no se encontró en TOTAL, usar el monto más grande
+  if (!valorFound && allMoneyMatches.length > 0) {
+    valorFound = Math.max(...allMoneyMatches).toFixed(2);
+    console.log('✓ TOTAL encontrado (máximo de todos):', valorFound);
   }
 
   if (valorFound) {
@@ -356,14 +471,14 @@ function extractInvoiceData(text) {
     console.log('✗ No se encontró el total');
   }
 
-  // 3. EXTRAER FECHA (puede aparecer como "FECHA DE EMISIÓN: 22-11-2025")
+  // 3. EXTRAER FECHA
   let fechaFound = '';
   
   for (const line of lines) {
-    if (/FECHA\s+DE\s+EMISI[OÓ]N/i.test(line)) {
+    // Buscar "FECHA DE EMISIÓN"
+    if (/FECHA\s+(?:DE\s+)?EMISI[OÓ]N/i.test(line)) {
       console.log('✓ Línea con FECHA DE EMISIÓN:', line);
       
-      // Buscar formato: DD-MM-YYYY o DD/MM/YYYY
       const fechaMatch = line.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
       if (fechaMatch) {
         const day = fechaMatch[1].padStart(2, '0');
@@ -376,20 +491,18 @@ function extractInvoiceData(text) {
     }
   }
   
-  // Fallback: buscar cualquier fecha en formato DD-MM-YYYY o DD/MM/YYYY
+  // Fallback: buscar cualquier fecha válida
   if (!fechaFound) {
     for (const line of lines) {
       const fechaMatch = line.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
       if (fechaMatch) {
-        const day = fechaMatch[1].padStart(2, '0');
-        const month = fechaMatch[2].padStart(2, '0');
+        const day = parseInt(fechaMatch[1]);
+        const month = parseInt(fechaMatch[2]);
         const year = fechaMatch[3];
         
-        // Validar que sea una fecha válida
-        const monthNum = parseInt(month);
-        const dayNum = parseInt(day);
-        if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
-          fechaFound = `${year}-${month}-${day}`;
+        // Validar fecha
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          fechaFound = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
           console.log('✓ Fecha encontrada (fallback):', fechaFound);
           break;
         }
@@ -407,10 +520,26 @@ function extractInvoiceData(text) {
   console.log('📅 Fecha:', data.fecha || 'NO ENCONTRADA');
   console.log('🔢 Autorización/Factura:', data.docNo || 'NO ENCONTRADA');
   console.log('💰 Total:', data.valor ? 'Q ' + data.valor : 'NO ENCONTRADO');
+  console.log('========================');
 
   return data;
 }
 
+function fillForm(data) {
+  const fechaInput = document.getElementById('fecha');
+  const docInput = document.getElementById('docNo');
+  const valorInput = document.getElementById('valor');
+
+  if (data.fecha) {
+    fechaInput.value = data.fecha;
+  } else {
+    const today = new Date().toISOString().split('T')[0];
+    fechaInput.value = today;
+  }
+  
+  if (data.docNo) docInput.value = data.docNo;
+  if (data.valor) valorInput.value = data.valor;
+}
 
 // ============================================
 // FORMULARIO
@@ -486,11 +615,9 @@ function closePreview() {
 // ============================================
 
 async function uploadToGoogleDrive(base64Image, filename) {
-  // Ya no usamos Drive, retornamos el Base64 directamente
   console.log('📷 Imagen preparada para Sheets:', filename);
   return base64Image;
 }
-
 
 async function saveToGoogleSheets(data) {
   if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbyUJqcZ9RFXhDI-9L4V89EeYCLmwGxz5w_OWlBvS2uprNrj_xUAB5Z3YCM-X2aj9DDK/exec') {
