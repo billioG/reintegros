@@ -190,10 +190,18 @@ function handleImageCapture(e) {
 
 async function processOCR(imageFile) {
   try {
-    // Tesseract v1 vía CDN (no hace falta configurar worker) [web:38]
+    console.log('Iniciando OCR...');
+    
+    // Tesseract v1 por CDN
     const result = await Tesseract.recognize(imageFile);
-    const text = result.text || '';
-    console.log('Texto OCR:', text);
+    
+    // En v1, result.text es directo
+    const text = result && result.text ? result.text : '';
+    console.log('Texto OCR extraído:', text);
+
+    if (!text || text.trim() === '') {
+      throw new Error('No se pudo extraer texto de la imagen');
+    }
 
     const extracted = extractInvoiceData(text);
     fillForm(extracted);
@@ -203,11 +211,11 @@ async function processOCR(imageFile) {
   } catch (error) {
     console.error('Error en OCR:', error);
     document.getElementById('ocrStatus').innerHTML =
-      '<span>❌ Error al extraer datos. Complete manualmente.</span>';
+      '<span>⚠️ No se pudo leer la imagen. Complete manualmente.</span>';
     setTimeout(() => {
       document.getElementById('ocrStatus').style.display = 'none';
       document.getElementById('dataForm').style.display = 'block';
-    }, 2000);
+    }, 2500);
   }
 }
 
@@ -406,7 +414,7 @@ async function syncPendingData(forceMessage = false) {
 
   const pending = await getPendingData();
   if (pending.length === 0) {
-    if (forceMessage) showNotification('No hay datos pendientes para sincronizar');
+    if (forceMessage) showNotification('✓ No hay datos pendientes para sincronizar');
     return;
   }
 
@@ -432,7 +440,6 @@ async function syncPendingData(forceMessage = false) {
       await markAsSynced(item.id);
     } catch (err) {
       console.error('Error sincronizando item:', err);
-      // se continúa con los demás
     }
   }
 
@@ -461,12 +468,9 @@ function updateConnectionStatus() {
 
 async function updatePendingCount() {
   const pending = await getPendingData();
-  const all = await getAllData();
-
   const count = pending.length;
+  
   document.getElementById('pendingCount').textContent = count;
-  document.getElementById('savedCount').textContent = all.length;
-
   document.getElementById('viewPending').style.display =
     count > 0 ? 'flex' : 'none';
 }
@@ -505,13 +509,16 @@ function showNotification(message) {
 
 function showSyncNotification() {
   document.getElementById('syncNotification').classList.add('show');
+  document.getElementById('btnSyncNow').classList.add('syncing');
+  document.getElementById('btnSyncNow').disabled = true;
 }
 
 function hideSyncNotification() {
   document.getElementById('syncNotification').classList.remove('show');
+  document.getElementById('btnSyncNow').classList.remove('syncing');
+  document.getElementById('btnSyncNow').disabled = false;
 }
 
-// Modal pendientes
 async function showPendingModal() {
   const list = document.getElementById('pendingList');
   const pending = await getPendingData();
@@ -547,7 +554,6 @@ function closePendingModal() {
   document.getElementById('pendingModal').style.display = 'none';
 }
 
-// Eventos online/offline
 function handleOnline() {
   isOnline = true;
   updateConnectionStatus();
