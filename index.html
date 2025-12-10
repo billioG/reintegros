@@ -1,147 +1,161 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#1a4d4d">
-    <title>Reintegros Cloud</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="styles.css">
-    
-    <!-- Tesseract.js para OCR -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1a4d4d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Reintegros Cloud</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./styles.css" />
+
+  <!-- Tesseract.js v1 estable por CDN -->
+  <script src="https://cdn.jsdelivr.net/gh/naptha/tesseract.js@v1.0.14/dist/tesseract.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="logo">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" fill="white"/>
-                </svg>
-                <span>Reintegros Cloud</span>
-            </div>
-            <div class="version">v4.0 Final</div>
-        </header>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" fill="white" />
+        </svg>
+        <span>Reintegros Cloud</span>
+      </div>
+      <div class="version">v4.0 Final</div>
+    </header>
 
-        <!-- Estado de conexión -->
-        <div class="connection-status" id="connectionStatus">
-            <span class="status-indicator" id="statusIndicator"></span>
-            <span id="statusText">Conectado</span>
-        </div>
-
-        <!-- Notificación de sincronización -->
-        <div class="sync-notification" id="syncNotification">
-            <span>📤 Sincronizando datos...</span>
-        </div>
-
-        <!-- Sección de captura de factura -->
-        <div class="capture-section">
-            <div class="camera-icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="#16a085">
-                    <circle cx="12" cy="12" r="3.2"/>
-                    <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
-                </svg>
-            </div>
-            <h2>Capturar Factura</h2>
-            <p>Usa una foto clara</p>
-            <button class="btn-primary" id="openCamera">Abrir Cámara</button>
-        </div>
-
-        <!-- Input de cámara oculto -->
-        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
-
-        <!-- Vista previa de imagen -->
-        <div class="image-preview" id="imagePreview" style="display: none;">
-            <img id="previewImage" alt="Vista previa">
-            <button class="btn-close" id="closePreview">✕</button>
-            <div class="ocr-status" id="ocrStatus">
-                <div class="spinner"></div>
-                <span>Extrayendo datos...</span>
-            </div>
-        </div>
-
-        <!-- Formulario de datos -->
-        <form class="data-form" id="dataForm" style="display: none;">
-            <h3>Datos</h3>
-            <div class="form-group">
-                <label for="fecha">FECHA</label>
-                <input type="date" id="fecha" name="fecha" required>
-            </div>
-
-            <div class="form-group">
-                <label for="descripcion">DESCRIPCIÓN</label>
-                <textarea id="descripcion" name="descripcion" rows="3" placeholder="Descripción del gasto" required></textarea>
-            </div>
-
-            <div class="form-group">
-                <label for="docNo">DOC. NO.</label>
-                <input type="text" id="docNo" name="docNo" placeholder="Número de documento">
-            </div>
-
-            <div class="form-group">
-                <label for="proyecto">PROYECTO</label>
-                <select id="proyecto" name="proyecto" required>
-                    <option value="">Seleccionar...</option>
-                    <option value="BI">BI</option>
-                    <option value="ATT">ATT</option>
-                    <option value="1bot">1bot</option>
-                    <option value="UNICEF">UNICEF</option>
-                    <option value="otro">Otro</option>
-                </select>
-            </div>
-
-            <div class="form-group" id="otroProyectoGroup" style="display: none;">
-                <label for="otroProyecto">ESPECIFICAR PROYECTO</label>
-                <input type="text" id="otroProyecto" name="otroProyecto" placeholder="Nombre del proyecto">
-            </div>
-
-            <div class="form-group">
-                <label for="valor">VALOR (Q)</label>
-                <input type="number" id="valor" name="valor" step="0.01" placeholder="0.00" required>
-            </div>
-
-            <div class="form-group">
-                <label for="solicitante">SOLICITANTE</label>
-                <input type="text" id="solicitante" name="solicitante" placeholder="Nombre del solicitante" required>
-            </div>
-
-            <div class="form-actions">
-                <button type="button" class="btn-secondary" id="cancelForm">Cancelar</button>
-                <button type="submit" class="btn-submit">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                        <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
-                    </svg>
-                    Guardar en Nube
-                </button>
-            </div>
-        </form>
-
-        <!-- Botón para ver datos pendientes -->
-        <button class="btn-pending" id="viewPending" style="display: none;">
-            <span class="pending-badge" id="pendingCount">0</span>
-            Ver Datos Pendientes
-        </button>
-
-        <!-- Modal de datos pendientes -->
-        <div class="modal" id="pendingModal" style="display: none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Datos Pendientes de Sincronización</h3>
-                    <button class="btn-close" id="closePendingModal">✕</button>
-                </div>
-                <div class="pending-list" id="pendingList"></div>
-                <button class="btn-primary" id="syncAll">Sincronizar Todo Ahora</button>
-            </div>
-        </div>
-
-        <!-- Footer con indicador de datos guardados -->
-        <footer>
-            <div class="saved-data">
-                <span id="savedCount">0</span> registros guardados localmente
-            </div>
-        </footer>
+    <div class="connection-status" id="connectionStatus">
+      <span class="status-indicator" id="statusIndicator"></span>
+      <span id="statusText">Conectado</span>
     </div>
 
-    <script src="app.js"></script>
+    <div class="sync-notification" id="syncNotification">
+      <span>📤 Sincronizando datos...</span>
+    </div>
+
+    <div class="capture-section">
+      <div class="camera-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="#16a085">
+          <circle cx="12" cy="12" r="3.2" />
+          <path
+            d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"
+          />
+        </svg>
+      </div>
+      <h2>Capturar Factura</h2>
+      <p>Usa una foto clara</p>
+      <button class="btn-primary" id="openCamera">Abrir Cámara</button>
+    </div>
+
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none" />
+
+    <div class="image-preview" id="imagePreview" style="display: none">
+      <img id="previewImage" alt="Vista previa" />
+      <button class="btn-close" id="closePreview">✕</button>
+      <div class="ocr-status" id="ocrStatus">
+        <div class="spinner"></div>
+        <span>Extrayendo datos...</span>
+      </div>
+    </div>
+
+    <form class="data-form" id="dataForm" style="display: none">
+      <h3>Datos</h3>
+
+      <div class="form-group">
+        <label for="fecha">FECHA</label>
+        <input type="date" id="fecha" required />
+      </div>
+
+      <div class="form-group">
+        <label for="descripcion">DESCRIPCIÓN</label>
+        <textarea id="descripcion" rows="3" placeholder="Descripción del gasto" required></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="docNo">DOC. NO.</label>
+        <input type="text" id="docNo" placeholder="Número de documento" />
+      </div>
+
+      <div class="form-group">
+        <label for="proyecto">PROYECTO</label>
+        <select id="proyecto" required>
+          <option value="">Seleccionar...</option>
+          <option value="BI">BI</option>
+          <option value="ATT">ATT</option>
+          <option value="1bot">1bot</option>
+          <option value="UNICEF">UNICEF</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="otroProyectoGroup" style="display: none">
+        <label for="otroProyecto">ESPECIFICAR PROYECTO</label>
+        <input type="text" id="otroProyecto" placeholder="Nombre del proyecto" />
+      </div>
+
+      <div class="form-group">
+        <label for="valor">VALOR (Q)</label>
+        <input type="number" id="valor" step="0.01" placeholder="0.00" required />
+      </div>
+
+      <div class="form-group">
+        <label for="solicitante">SOLICITANTE</label>
+        <input type="text" id="solicitante" placeholder="Nombre del solicitante" required />
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="cancelForm">Cancelar</button>
+        <button type="submit" class="btn-submit">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+            <path
+              d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"
+            />
+          </svg>
+          Guardar en Nube
+        </button>
+      </div>
+    </form>
+
+    <button class="btn-pending" id="viewPending" style="display: none">
+      <span class="pending-badge" id="pendingCount">0</span>
+      Ver Datos Pendientes
+    </button>
+
+    <div class="modal" id="pendingModal" style="display: none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Datos Pendientes de Sincronización</h3>
+          <button class="btn-close" id="closePendingModal">✕</button>
+        </div>
+        <div class="pending-list" id="pendingList"></div>
+        <button class="btn-primary" id="syncAll">Sincronizar Todo Ahora</button>
+      </div>
+    </div>
+
+    <footer>
+      <div class="saved-data">
+        <span id="savedCount">0</span> registros guardados localmente
+      </div>
+    </footer>
+
+    <div class="sync-dashboard">
+      <div class="sync-stat">
+        <span class="label">Pendientes</span>
+        <span class="value" id="dashPending">0</span>
+      </div>
+      <div class="sync-stat">
+        <span class="label">Enviados</span>
+        <span class="value" id="dashSynced">0</span>
+      </div>
+      <div class="sync-stat">
+        <span class="label">Última sync</span>
+        <span class="value" id="dashLastSync">—</span>
+      </div>
+      <button class="btn-sync" id="btnSyncNow">Sincronizar</button>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
 </body>
 </html>
