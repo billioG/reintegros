@@ -24,22 +24,29 @@ async function initializeApp() {
     // Registrar Service Worker
     if ('serviceWorker' in navigator) {
         try {
-            await navigator.serviceWorker.register('sw.js');
-            console.log('Service Worker registrado');
+            const registration = await navigator.serviceWorker.register('./sw.js');
+            console.log('Service Worker registrado:', registration);
         } catch (error) {
             console.error('Error registrando Service Worker:', error);
+            // Continuar aunque falle el SW
         }
     }
 
     // Inicializar IndexedDB
-    await initDB();
+    try {
+        await initDB();
+    } catch (error) {
+        console.error('Error inicializando DB:', error);
+        alert('Error inicializando base de datos local');
+        return;
+    }
 
     // Configurar event listeners
     setupEventListeners();
 
     // Actualizar UI
     updateConnectionStatus();
-    updatePendingCount();
+    await updatePendingCount();
 
     // Escuchar cambios de conexión
     window.addEventListener('online', handleOnline);
@@ -47,7 +54,9 @@ async function initializeApp() {
 
     // Intentar sincronizar al inicio si hay conexión
     if (isOnline) {
-        syncPendingData();
+        setTimeout(() => {
+            syncPendingData();
+        }, 1000);
     }
 }
 
@@ -101,13 +110,18 @@ async function getPendingData() {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([STORE_NAME], 'readonly');
         const objectStore = transaction.objectStore(STORE_NAME);
-        const index = objectStore.index('synced');
-        const request = index.getAll(IDBKeyRange.only(false));
+        const request = objectStore.getAll();
 
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = () => {
+            // Filtrar solo los no sincronizados
+            const allData = request.result;
+            const pending = allData.filter(item => !item.synced);
+            resolve(pending);
+        };
         request.onerror = () => reject(request.error);
     });
 }
+
 
 async function markAsSynced(id) {
     return new Promise((resolve, reject) => {
