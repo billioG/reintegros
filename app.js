@@ -3,7 +3,7 @@
 // ============================================
 
 const SPREADSHEET_ID = '19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78';
-const APPS_SCRIPT_URL = ''; // LO CONFIGURAREMOS MÁS ADELANTE
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3L9bCM4alugbNwpwnq9jY2YE_FRUBJGA8D3NH816XHjItLmagmqXj0v_gBJBfW90u/exec'; // LO CONFIGURAREMOS MÁS ADELANTE
 const DB_NAME = 'ReintegrosDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'pending_invoices';
