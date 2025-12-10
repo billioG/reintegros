@@ -3,7 +3,7 @@
 // ============================================
 
 const SPREADSHEET_ID = '19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78';
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3L9bCM4alugbNwpwnq9jY2YE_FRUBJGA8D3NH816XHjItLmagmqXj0v_gBJBfW90u/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzWPWl9irGTU4-XfiDvpkX1E5Rm-uznHraS0og9sOXh1ymCmoYMqu8zzT8LeyU6iNIp/exec';
 
 const DB_NAME = 'ReintegrosDB';
 const DB_VERSION = 1;
@@ -193,7 +193,7 @@ async function processOCR(imageFile) {
     console.log('Iniciando OCR...');
     
     // Tesseract v1 por CDN
-    const result = await Tesseract.recognize(imageFile);
+    const result = await Tesseract.recognize(imageFile, 'spa');
     
     // En v1, result.text es directo
     const text = result && result.text ? result.text : '';
@@ -226,18 +226,20 @@ async function processOCR(imageFile) {
 function extractInvoiceData(text) {
   const data = { fecha: '', docNo: '', valor: '' };
 
-  // Fecha
+  // Extraer Fecha (múltiples formatos)
   const fechaPatterns = [
-    /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/,
-    /(\d{2,4})[\/\-](\d{1,2})[\/\-](\d{1,2})/,
-    /fecha[:\s]+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/i
+    /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/,
+    /(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/,
+    /fecha[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/i
   ];
-  for (const p of fechaPatterns) {
-    const m = text.match(p);
-    if (m) {
-      const [_, a, b, c] = m;
+  
+  for (const pattern of fechaPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const [_, a, b, c] = match;
       let year = c.length === 2 ? '20' + c : c;
       let month, day;
+      
       if (parseInt(b, 10) <= 12) {
         day = a.padStart(2, '0');
         month = b.padStart(2, '0');
@@ -245,35 +247,45 @@ function extractInvoiceData(text) {
         day = b.padStart(2, '0');
         month = a.padStart(2, '0');
       }
+      
       data.fecha = `${year}-${month}-${day}`;
       break;
     }
   }
 
-  // Doc No
+  // Extraer Doc No (DTE, Factura, etc)
   const docPatterns = [
-    /(?:DTE|Documento|Doc\.?|Factura|N[uú]mero)[:\s]+([A-Z0-9\-]+)/i,
-    /([A-Z0-9]{8}-[A-Z0-9]{10})/,
-    /DTE[:\s]*([0-9\-]+)/i
+    /(?:DTE|Documento|Doc\.?|Factura|N[uú]mero|Serie)[:\s]+([A-Z0-9\-]{5,})/i,
+    /([A-Z0-9]{8}-[A-Z0-9]{8,})/,
+    /DTE[:\s]*([0-9\-]+)/i,
+    /Serie[:\s]+([A-Z0-9\-]+)/i
   ];
-  for (const p of docPatterns) {
-    const m = text.match(p);
-    if (m) {
-      data.docNo = m[1].trim();
+  
+  for (const pattern of docPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      data.docNo = match[1].trim();
       break;
     }
   }
 
-  // Valor
+  // Extraer Valor/Total (Q, total, monto)
   const valorPatterns = [
-    /(?:total|monto|valor)[:\s]*Q?[:\s]*(\d+[.,]?\d*)/i,
+    /(?:total|monto|valor|pagar)[:\s]*Q?[:\s]*(\d+[.,]?\d*)/i,
     /Q[:\s]*(\d+[.,]?\d+)/,
-    /(\d+\.\d{2})\s*$/m
+    /(\d+\.\d{2})\s*$/m,
+    /(?:Q|GTQ)[:\s]*(\d{1,3}(?:[,.\s]\d{3})*[.,]\d{2})/i
   ];
-  for (const p of valorPatterns) {
-    const m = text.match(p);
-    if (m) {
-      data.valor = m[1].replace(',', '.');
+  
+  for (const pattern of valorPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      let valor = match[1].replace(/[Qq\s]/g, '').replace(',', '.');
+      // Si tiene formato 1.000,00 convertir a 1000.00
+      if (valor.indexOf('.') < valor.indexOf(',')) {
+        valor = valor.replace('.', '').replace(',', '.');
+      }
+      data.valor = parseFloat(valor).toFixed(2);
       break;
     }
   }
@@ -292,6 +304,7 @@ function fillForm(data) {
     const today = new Date().toISOString().split('T')[0];
     fechaInput.value = today;
   }
+  
   if (data.docNo) docInput.value = data.docNo;
   if (data.valor) valorInput.value = data.valor;
 }
@@ -366,7 +379,7 @@ function closePreview() {
 }
 
 // ============================================
-// SINCRONIZACIÓN CON APPS SCRIPT
+// SINCRONIZACIÓN CON GOOGLE SHEETS (GET)
 // ============================================
 
 async function uploadToGoogleDrive(base64Image, filename) {
@@ -375,34 +388,58 @@ async function uploadToGoogleDrive(base64Image, filename) {
     return base64Image;
   }
 
-  const resp = await fetch(APPS_SCRIPT_URL + '?action=uploadImage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  try {
+    const data = JSON.stringify({
       imageData: base64Image,
-      filename
-    })
-  });
+      filename: filename
+    });
 
-  const result = await resp.json();
-  if (!result.success) {
-    throw new Error(result.error || 'Error al subir imagen');
+    // Usar GET con parámetros en URL para evitar CORS
+    const url = `${APPS_SCRIPT_URL}?action=uploadImage&data=${encodeURIComponent(data)}`;
+    
+    const resp = await fetch(url, { 
+      method: 'GET',
+      redirect: 'follow'
+    });
+
+    const result = await resp.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Error al subir imagen');
+    }
+    
+    return result.url;
+  } catch (error) {
+    console.error('Error subiendo a Drive:', error);
+    throw error;
   }
-  return result.url;
 }
 
 async function saveToGoogleSheets(data) {
-  if (!APPS_SCRIPT_URL) return;
+  if (!APPS_SCRIPT_URL) {
+    console.warn('Apps Script URL no configurada');
+    return;
+  }
 
-  const resp = await fetch(APPS_SCRIPT_URL + '?action=addRow', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  });
+  try {
+    const jsonData = JSON.stringify(data);
+    
+    // Usar GET con parámetros en URL
+    const url = `${APPS_SCRIPT_URL}?action=addRow&data=${encodeURIComponent(jsonData)}`;
 
-  const result = await resp.json();
-  if (!result.success) {
-    throw new Error(result.error || 'Error al guardar en Sheets');
+    const resp = await fetch(url, { 
+      method: 'GET',
+      redirect: 'follow'
+    });
+
+    const result = await resp.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Error al guardar en Sheets');
+    }
+  } catch (error) {
+    console.error('Error guardando en Sheets:', error);
+    throw error;
   }
 }
 
@@ -420,13 +457,18 @@ async function syncPendingData(forceMessage = false) {
 
   showSyncNotification();
 
+  let successCount = 0;
+  let errorCount = 0;
+
   for (const item of pending) {
     try {
+      // 1. Subir imagen a Google Drive
       const fotoUrl = await uploadToGoogleDrive(
         item.foto,
-        `factura_${item.timestamp}.jpg`
+        `factura_${item.proyecto}_${item.timestamp}.jpg`
       );
 
+      // 2. Guardar en Google Sheets
       await saveToGoogleSheets({
         fecha: item.fecha,
         descripcion: item.descripcion,
@@ -437,17 +479,28 @@ async function syncPendingData(forceMessage = false) {
         foto: fotoUrl
       });
 
+      // 3. Marcar como sincronizado
       await markAsSynced(item.id);
+      successCount++;
+      
     } catch (err) {
       console.error('Error sincronizando item:', err);
+      errorCount++;
     }
   }
 
   hideSyncNotification();
   await updatePendingCount();
   await updateDashboard();
-  showNotification('✅ Datos sincronizados correctamente');
-  localStorage.setItem('lastSync', new Date().toISOString());
+  
+  if (successCount > 0) {
+    showNotification(`✅ ${successCount} registro(s) sincronizados correctamente`);
+    localStorage.setItem('lastSync', new Date().toISOString());
+  }
+  
+  if (errorCount > 0) {
+    showNotification(`⚠️ ${errorCount} registro(s) fallaron. Se reintentarán después.`);
+  }
 }
 
 // ============================================
@@ -509,14 +562,16 @@ function showNotification(message) {
 
 function showSyncNotification() {
   document.getElementById('syncNotification').classList.add('show');
-  document.getElementById('btnSyncNow').classList.add('syncing');
-  document.getElementById('btnSyncNow').disabled = true;
+  const btn = document.getElementById('btnSyncNow');
+  btn.classList.add('syncing');
+  btn.disabled = true;
 }
 
 function hideSyncNotification() {
   document.getElementById('syncNotification').classList.remove('show');
-  document.getElementById('btnSyncNow').classList.remove('syncing');
-  document.getElementById('btnSyncNow').disabled = false;
+  const btn = document.getElementById('btnSyncNow');
+  btn.classList.remove('syncing');
+  btn.disabled = false;
 }
 
 async function showPendingModal() {
@@ -541,6 +596,7 @@ async function showPendingModal() {
           <div><strong>Fecha:</strong> ${item.fecha}</div>
           <div><strong>Doc:</strong> ${item.docNo || 'N/A'}</div>
           <div><strong>Solicitante:</strong> ${item.solicitante}</div>
+          <div class="text-xs text-gray-400 mt-1">⏳ Esperando sincronización</div>
         </div>
       `;
       list.appendChild(el);
@@ -557,10 +613,12 @@ function closePendingModal() {
 function handleOnline() {
   isOnline = true;
   updateConnectionStatus();
+  showNotification('🌐 Conexión restaurada. Sincronizando...');
   syncPendingData();
 }
 
 function handleOffline() {
   isOnline = false;
   updateConnectionStatus();
+  showNotification('📡 Sin conexión. Los datos se guardarán localmente.');
 }
