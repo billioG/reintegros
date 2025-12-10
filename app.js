@@ -3,7 +3,7 @@
 // ============================================
 
 const SPREADSHEET_ID = '19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78';
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbygjGRZEFjwOPQhS1nuF9wyX8fHUYyUssLgeeRaJ2GVLohD8jGx7YBO4KxNUF120J53/exec'; // ACTUALIZA ESTO
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz5ed5YgslwBRowLEJC_OUAclxm285kYOiINjNq5o-BunJF7rNP2cJgL4GdkxeC3aiv/exec';
 
 const DB_NAME = 'ReintegrosDB';
 const DB_VERSION = 1;
@@ -160,7 +160,7 @@ function setupEventListeners() {
 }
 
 // ============================================
-// CÁMARA Y OCR MEJORADO
+// CÁMARA Y OCR
 // ============================================
 
 function openCamera() {
@@ -223,7 +223,7 @@ async function processOCR(imageFile) {
 }
 
 // ============================================
-// EXTRACCIÓN DE DATOS MEJORADA
+// EXTRACCIÓN DE DATOS OPTIMIZADA
 // ============================================
 
 function extractInvoiceData(text) {
@@ -231,91 +231,117 @@ function extractInvoiceData(text) {
   const cleanText = text.replace(/[\r\n]+/g, '\n');
   const lines = cleanText.split('\n');
 
-  // 1. EXTRAER FECHA
-  const fechaPatterns = [
-    /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/,
-    /fecha[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/i
-  ];
-  
-  for (const pattern of fechaPatterns) {
-    const match = cleanText.match(pattern);
-    if (match) {
-      const [_, a, b, c] = match;
-      let year = c.length === 2 ? '20' + c : c;
-      let month, day;
-      
-      if (parseInt(b, 10) <= 12) {
-        day = a.padStart(2, '0');
-        month = b.padStart(2, '0');
-      } else {
-        day = b.padStart(2, '0');
-        month = a.padStart(2, '0');
-      }
-      
-      data.fecha = `${year}-${month}-${day}`;
-      break;
-    }
-  }
+  console.log('=== EXTRAYENDO DATOS ===');
+  console.log('Texto limpio:', cleanText);
 
-  // 2. EXTRAER NÚMERO DE FACTURA/DTE (MEJORADO)
+  // 1. EXTRAER NÚMERO DE FACTURA/DTE
   let dteFound = '';
-  const uuidRegex = /\b[A-F0-9]{8,}(?:-[A-F0-9]{4,})?\b/i;
-  const simpleNumRegex = /\b\d{6,15}\b/;
-  const keywordRegex = /(?:DTE\s?No\.?|N[uú]mero\s?(?:de)?\s?DTE|Factura|Serie|Documento|Doc\.?)/i;
+  
+  // Patrones específicos para tus facturas
+  const dtePatterns = [
+    // "Numero de DTE: 12345678" o "NUMERO: 12345678"
+    /(?:Numero\s+de\s+DTE|NUMERO|DTE\s+No\.?|Factura)[:\s]*(\d{8,15})/i,
+    
+    // "FACTURA" seguido de UUID en línea siguiente: "XXXXXXXX-XXXXXXXXX"
+    /([A-F0-9]{8}-[A-F0-9]{8,})/i,
+    
+    // Solo números largos (8-15 dígitos)
+    /\b(\d{8,15})\b/
+  ];
 
-  // Buscar por palabras clave primero
+  // Primero buscar por palabras clave
   for (let i = 0; i < lines.length; i++) {
-    if (keywordRegex.test(lines[i])) {
-      console.log('Palabra clave encontrada en línea:', lines[i]);
-      
-      // Buscar UUID o número en la misma línea
-      let match = lines[i].match(uuidRegex) || lines[i].match(simpleNumRegex);
-      
-      // Si no se encuentra, buscar en la siguiente línea
-      if (!match && i + 1 < lines.length) {
-        match = lines[i + 1].match(uuidRegex) || lines[i + 1].match(simpleNumRegex);
-      }
-      
-      if (match) {
-        dteFound = match[0];
-        console.log('DTE/Factura encontrado:', dteFound);
+    const line = lines[i].trim();
+    
+    // Si encontramos "FACTURA" buscar UUID en línea siguiente
+    if (/^FACTURA$/i.test(line) && i + 1 < lines.length) {
+      const nextLine = lines[i + 1].trim();
+      const uuidMatch = nextLine.match(/([A-F0-9]{8}-[A-F0-9]{8,})/i);
+      if (uuidMatch) {
+        dteFound = uuidMatch[1];
+        console.log('✓ DTE encontrado después de FACTURA:', dteFound);
         break;
       }
     }
-  }
-
-  // Fallback: buscar cualquier UUID o número largo
-  if (!dteFound) {
-    const matchB = cleanText.match(uuidRegex) || cleanText.match(simpleNumRegex);
-    if (matchB) dteFound = matchB[0];
+    
+    // Buscar "Numero de DTE:", "NUMERO:", "DTE No."
+    for (const pattern of dtePatterns) {
+      const match = line.match(pattern);
+      if (match) {
+        dteFound = match[1];
+        console.log('✓ DTE encontrado con patrón:', dteFound);
+        break;
+      }
+    }
+    
+    if (dteFound) break;
   }
 
   if (dteFound) {
     data.docNo = dteFound;
+  } else {
+    console.log('✗ No se encontró número de DTE/Factura');
   }
 
-  // 3. EXTRAER VALOR/TOTAL (MEJORADO PARA GUATEMALA)
-  const moneyMatches = cleanText.match(/(?:Q\s?)?([0-9]{1,3}(?:[,.][0-9]{3})*[.,][0-9]{2})/g);
-  if (moneyMatches) {
-    const values = moneyMatches.map(v => {
-      let raw = v.replace(/[Q\s]/g, '');
-      
-      // Si tiene coma como decimal (Q123,45)
-      if (raw.indexOf(',') > -1 && raw.indexOf('.') === -1) {
-        raw = raw.replace(',', '.');
-      } else {
-        // Si tiene punto como miles (Q1.234,56)
-        raw = raw.replace(/\./g, '').replace(',', '.');
+  // 2. EXTRAER TOTAL
+  let valorFound = '';
+  
+  // Buscar "TOTAL 100.00" o "TOTAL Q100.00"
+  const totalPatterns = [
+    /TOTAL\s+Q?\s*(\d+\.?\d*)/i,
+    /Q\s*(\d+\.\d{2})/,
+    /(\d+\.\d{2})/
+  ];
+
+  for (const line of lines) {
+    for (const pattern of totalPatterns) {
+      const match = line.match(pattern);
+      if (match) {
+        const valor = parseFloat(match[1]);
+        if (valor > 0 && !isNaN(valor)) {
+          valorFound = valor.toFixed(2);
+          console.log('✓ Total encontrado:', valorFound);
+          break;
+        }
       }
-      
-      return parseFloat(raw);
-    });
-    
-    const maxVal = Math.max(...values.filter(v => !isNaN(v)));
-    if (maxVal > 0) {
-      data.valor = maxVal.toFixed(2);
+    }
+    if (valorFound) break;
+  }
+
+  if (valorFound) {
+    data.valor = valorFound;
+  } else {
+    console.log('✗ No se encontró el total');
+  }
+
+  // 3. EXTRAER FECHA
+  // Buscar "FECHA DE EMISION 28/11/2025"
+  const fechaPatterns = [
+    /FECHA\s+DE\s+EMISION\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/i,
+    /FECHA[:\s]+(\d{1,2})\/(\d{1,2})\/(\d{4})/i,
+    /(\d{1,2})\/(\d{1,2})\/(\d{4})/
+  ];
+
+  for (const pattern of fechaPatterns) {
+    const match = cleanText.match(pattern);
+    if (match) {
+      const day = match[1].padStart(2, '0');
+      const month = match[2].padStart(2, '0');
+      const year = match[3];
+      data.fecha = `${year}-${month}-${day}`;
+      console.log('✓ Fecha encontrada:', data.fecha);
+      break;
     }
   }
+
+  if (!data.fecha) {
+    console.log('✗ No se encontró la fecha');
+  }
+
+  console.log('=== RESULTADO ===');
+  console.log('Fecha:', data.fecha || 'NO ENCONTRADA');
+  console.log('Factura/DTE:', data.docNo || 'NO ENCONTRADA');
+  console.log('Total:', data.valor || 'NO ENCONTRADO');
 
   return data;
 }
@@ -410,53 +436,63 @@ function closePreview() {
 // ============================================
 
 async function uploadToGoogleDrive(base64Image, filename) {
-  if (!APPS_SCRIPT_URL) {
-    console.warn('Apps Script URL no configurada');
-    return base64Image;
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === 'PEGA_AQUI_TU_URL_DEL_APPS_SCRIPT') {
+    console.error('⚠️ Apps Script URL no configurada');
+    return 'URL no configurada';
   }
 
   try {
-    await fetch(`${APPS_SCRIPT_URL}?action=uploadImage`, {
+    console.log('📤 Subiendo imagen a Drive...', filename);
+    
+    const response = await fetch(`${APPS_SCRIPT_URL}?action=uploadImage`, {
       method: 'POST',
-      mode: 'no-cors',
-      headers: { 
-        'Content-Type': 'application/json'
-      },
       body: JSON.stringify({
         imageData: base64Image,
         filename: filename
       })
     });
 
-    console.log('Imagen enviada a Google Drive');
-    return `https://drive.google.com/drive/folders/1YiBTEkCqbYrqXFDHi5dUUdN0Gg2EqP5Y`;
+    const result = await response.json();
+    
+    if (result.success) {
+      console.log('✅ Imagen subida exitosamente:', result.url);
+      return result.url;
+    } else {
+      console.error('❌ Error del servidor:', result.error);
+      return 'Error: ' + result.error;
+    }
     
   } catch (error) {
-    console.error('Error subiendo a Drive:', error);
-    throw error;
+    console.error('❌ Error en fetch:', error);
+    return 'Error de red: ' + error.message;
   }
 }
 
 async function saveToGoogleSheets(data) {
-  if (!APPS_SCRIPT_URL) {
-    console.warn('Apps Script URL no configurada');
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === 'PEGA_AQUI_TU_URL_DEL_APPS_SCRIPT') {
+    console.error('⚠️ Apps Script URL no configurada');
     return;
   }
 
   try {
-    await fetch(`${APPS_SCRIPT_URL}?action=addRow`, {
+    console.log('📝 Guardando en Sheets...', data);
+    
+    const response = await fetch(`${APPS_SCRIPT_URL}?action=addRow`, {
       method: 'POST',
-      mode: 'no-cors',
-      headers: { 
-        'Content-Type': 'application/json'
-      },
       body: JSON.stringify(data)
     });
 
-    console.log('Datos enviados a Google Sheets');
+    const result = await response.json();
+    
+    if (result.success) {
+      console.log('✅ Datos guardados en Sheet correctamente');
+    } else {
+      console.error('❌ Error al guardar:', result.error);
+      throw new Error(result.error);
+    }
     
   } catch (error) {
-    console.error('Error guardando en Sheets:', error);
+    console.error('❌ Error guardando en Sheets:', error);
     throw error;
   }
 }
