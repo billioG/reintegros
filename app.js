@@ -226,7 +226,7 @@ async function processOCR(imageFile) {
 function extractInvoiceData(text) {
   const data = { fecha: '', docNo: '', valor: '' };
 
-  // Extraer Fecha (múltiples formatos)
+  // Extraer Fecha
   const fechaPatterns = [
     /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/,
     /(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/,
@@ -253,7 +253,7 @@ function extractInvoiceData(text) {
     }
   }
 
-  // Extraer Doc No (DTE, Factura, etc)
+  // Extraer Doc No
   const docPatterns = [
     /(?:DTE|Documento|Doc\.?|Factura|N[uú]mero|Serie)[:\s]+([A-Z0-9\-]{5,})/i,
     /([A-Z0-9]{8}-[A-Z0-9]{8,})/,
@@ -269,7 +269,7 @@ function extractInvoiceData(text) {
     }
   }
 
-  // Extraer Valor/Total (Q, total, monto)
+  // Extraer Valor
   const valorPatterns = [
     /(?:total|monto|valor|pagar)[:\s]*Q?[:\s]*(\d+[.,]?\d*)/i,
     /Q[:\s]*(\d+[.,]?\d+)/,
@@ -281,8 +281,7 @@ function extractInvoiceData(text) {
     const match = text.match(pattern);
     if (match) {
       let valor = match[1].replace(/[Qq\s]/g, '').replace(',', '.');
-      // Si tiene formato 1.000,00 convertir a 1000.00
-      if (valor.indexOf('.') < valor.indexOf(',')) {
+      if (valor.indexOf('.') < valor.lastIndexOf(',')) {
         valor = valor.replace('.', '').replace(',', '.');
       }
       data.valor = parseFloat(valor).toFixed(2);
@@ -379,7 +378,7 @@ function closePreview() {
 }
 
 // ============================================
-// SINCRONIZACIÓN CON GOOGLE SHEETS (GET)
+// SINCRONIZACIÓN CON GOOGLE SHEETS
 // ============================================
 
 async function uploadToGoogleDrive(base64Image, filename) {
@@ -389,9 +388,9 @@ async function uploadToGoogleDrive(base64Image, filename) {
   }
 
   try {
-    const resp = await fetch(`${APPS_SCRIPT_URL}?action=uploadImage`, {
+    await fetch(`${APPS_SCRIPT_URL}?action=uploadImage`, {
       method: 'POST',
-      mode: 'no-cors', // ESTO EVITA EL ERROR DE CORS
+      mode: 'no-cors',
       headers: { 
         'Content-Type': 'application/json'
       },
@@ -401,17 +400,14 @@ async function uploadToGoogleDrive(base64Image, filename) {
       })
     });
 
-    // Con no-cors no podemos leer la respuesta, asumimos éxito
-    // El Apps Script seguirá funcionando en segundo plano
     console.log('Imagen enviada a Google Drive');
-    return `https://drive.google.com/drive/folders/Facturas_Reintegros/${filename}`;
+    return `Drive: ${filename}`;
     
   } catch (error) {
     console.error('Error subiendo a Drive:', error);
     throw error;
   }
 }
-
 
 async function saveToGoogleSheets(data) {
   if (!APPS_SCRIPT_URL) {
@@ -420,21 +416,17 @@ async function saveToGoogleSheets(data) {
   }
 
   try {
-    const jsonData = JSON.stringify(data);
-    
-    // Usar GET con parámetros en URL
-    const url = `${APPS_SCRIPT_URL}?action=addRow&data=${encodeURIComponent(jsonData)}`;
-
-    const resp = await fetch(url, { 
-      method: 'GET',
-      redirect: 'follow'
+    await fetch(`${APPS_SCRIPT_URL}?action=addRow`, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
     });
 
-    const result = await resp.json();
+    console.log('Datos enviados a Google Sheets');
     
-    if (!result.success) {
-      throw new Error(result.error || 'Error al guardar en Sheets');
-    }
   } catch (error) {
     console.error('Error guardando en Sheets:', error);
     throw error;
@@ -460,67 +452,29 @@ async function syncPendingData(forceMessage = false) {
 
   for (const item of pending) {
     try {
-      // 1. Subir imagen a Google Drive
       const fotoUrl = await uploadToGoogleDrive(
         item.foto,
         `factura_${item.proyecto}_${item.timestamp}.jpg`
       );
 
-      // 2. Guardar en Google Sheets
-async function uploadToGoogleDrive(base64Image, filename) {
-  if (!APPS_SCRIPT_URL) {
-    console.warn('Apps Script URL no configurada');
-    return base64Image;
+      await saveToGoogleSheets({
+        fecha: item.fecha,
+        descripcion: item.descripcion,
+        docNo: item.docNo,
+        proyecto: item.proyecto,
+        valor: item.valor,
+        solicitante: item.solicitante,
+        foto: fotoUrl
+      });
+
+      await markAsSynced(item.id);
+      successCount++;
+      
+    } catch (err) {
+      console.error('Error sincronizando item:', err);
+      errorCount++;
+    }
   }
-
-  try {
-    const resp = await fetch(`${APPS_SCRIPT_URL}?action=uploadImage`, {
-      method: 'POST',
-      mode: 'no-cors', // ESTO EVITA EL ERROR DE CORS
-      headers: { 
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        imageData: base64Image,
-        filename: filename
-      })
-    });
-
-    // Con no-cors no podemos leer la respuesta, asumimos éxito
-    // El Apps Script seguirá funcionando en segundo plano
-    console.log('Imagen enviada a Google Drive');
-    return `https://drive.google.com/drive/folders/Facturas_Reintegros/${filename}`;
-    
-  } catch (error) {
-    console.error('Error subiendo a Drive:', error);
-    throw error;
-  }
-}
-
-async function saveToGoogleSheets(data) {
-  if (!APPS_SCRIPT_URL) {
-    console.warn('Apps Script URL no configurada');
-    return;
-  }
-
-  try {
-    await fetch(`${APPS_SCRIPT_URL}?action=addRow`, {
-      method: 'POST',
-      mode: 'no-cors', // ESTO EVITA EL ERROR DE CORS
-      headers: { 
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(data)
-    });
-
-    console.log('Datos enviados a Google Sheets');
-    
-  } catch (error) {
-    console.error('Error guardando en Sheets:', error);
-    throw error;
-  }
-}
-
 
   hideSyncNotification();
   await updatePendingCount();
