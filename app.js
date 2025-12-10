@@ -3,7 +3,7 @@
 // ============================================
 
 const SPREADSHEET_ID = '19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78';
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzNaCYynfL8fRTFPR31cu1QlqRj6CJ3ZxOb7u307iOUmhz4sWP7SrODpUv2n19l8UJR/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyUJqcZ9RFXhDI-9L4V89EeYCLmwGxz5w_OWlBvS2uprNrj_xUAB5Z3YCM-X2aj9DDK/exec';
 
 const DB_NAME = 'ReintegrosDB';
 const DB_VERSION = 1;
@@ -189,20 +189,39 @@ function handleImageCapture(e) {
 async function processOCR(imageFile) {
   try {
     console.log('Iniciando OCR...');
+    console.log('Tesseract cargado:', typeof Tesseract);
+    
+    // Verificar que Tesseract esté disponible
+    if (typeof Tesseract === 'undefined') {
+      throw new Error('Tesseract no está cargado');
+    }
     
     const result = await Tesseract.recognize(imageFile, 'spa', {
       logger: m => {
         if (m.status === 'recognizing text') {
           const progress = Math.round(m.progress * 100);
           console.log(`OCR: ${progress}%`);
+          document.getElementById('ocrStatus').innerHTML = 
+            `<div class="spinner"></div><span>Extrayendo datos... ${progress}%</span>`;
         }
       }
     });
     
-    const text = result && result.data && result.data.text ? result.data.text : '';
+    console.log('Resultado OCR completo:', result);
+    
+    let text = '';
+    
+    // Compatibilidad con diferentes versiones de Tesseract
+    if (result.data && result.data.text) {
+      text = result.data.text;
+    } else if (result.text) {
+      text = result.text;
+    }
+    
     console.log('Texto OCR extraído:', text);
+    console.log('Longitud del texto:', text.length);
 
-    if (!text || text.trim() === '') {
+    if (!text || text.trim().length === 0) {
       throw new Error('No se pudo extraer texto de la imagen');
     }
 
@@ -211,16 +230,21 @@ async function processOCR(imageFile) {
 
     document.getElementById('ocrStatus').style.display = 'none';
     document.getElementById('dataForm').style.display = 'block';
+    
   } catch (error) {
     console.error('Error en OCR:', error);
+    console.error('Stack:', error.stack);
+    
     document.getElementById('ocrStatus').innerHTML =
       '<span>⚠️ No se pudo leer la imagen. Complete manualmente.</span>';
+    
     setTimeout(() => {
       document.getElementById('ocrStatus').style.display = 'none';
       document.getElementById('dataForm').style.display = 'block';
     }, 2500);
   }
 }
+
 
 // ============================================
 // EXTRACCIÓN DE DATOS OPTIMIZADA
@@ -462,46 +486,20 @@ function closePreview() {
 // ============================================
 
 async function uploadToGoogleDrive(base64Image, filename) {
-  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === 'PEGA_AQUI_TU_URL_DEL_APPS_SCRIPT') {
-    console.error('⚠️ Apps Script URL no configurada');
-    return 'URL no configurada';
-  }
-
-  try {
-    console.log('📤 Subiendo imagen a Drive...', filename);
-    
-    const response = await fetch(`${APPS_SCRIPT_URL}?action=uploadImage`, {
-      method: 'POST',
-      body: JSON.stringify({
-        imageData: base64Image,
-        filename: filename
-      })
-    });
-
-    const result = await response.json();
-    
-    if (result.success) {
-      console.log('✅ Imagen subida exitosamente:', result.url);
-      return result.url;
-    } else {
-      console.error('❌ Error del servidor:', result.error);
-      return 'Error: ' + result.error;
-    }
-    
-  } catch (error) {
-    console.error('❌ Error en fetch:', error);
-    return 'Error de red: ' + error.message;
-  }
+  // Ya no usamos Drive, retornamos el Base64 directamente
+  console.log('📷 Imagen preparada para Sheets:', filename);
+  return base64Image;
 }
 
+
 async function saveToGoogleSheets(data) {
-  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === 'PEGA_AQUI_TU_URL_DEL_APPS_SCRIPT') {
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbyUJqcZ9RFXhDI-9L4V89EeYCLmwGxz5w_OWlBvS2uprNrj_xUAB5Z3YCM-X2aj9DDK/exec') {
     console.error('⚠️ Apps Script URL no configurada');
     return;
   }
 
   try {
-    console.log('📝 Guardando en Sheets...', data);
+    console.log('📝 Guardando en Sheets con imagen...');
     
     const response = await fetch(`${APPS_SCRIPT_URL}?action=addRow`, {
       method: 'POST',
@@ -511,7 +509,8 @@ async function saveToGoogleSheets(data) {
     const result = await response.json();
     
     if (result.success) {
-      console.log('✅ Datos guardados en Sheet correctamente');
+      console.log('✅ Datos guardados correctamente');
+      console.log('📸 Imagen guardada en hoja:', result.imageSheet);
     } else {
       console.error('❌ Error al guardar:', result.error);
       throw new Error(result.error);
