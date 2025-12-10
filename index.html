@@ -2,558 +2,146 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Reintegro de Gastos PWA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a4d4d">
+    <title>Reintegros Cloud</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="styles.css">
     
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Librerías Externas -->
-    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <!-- Iconos -->
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
-
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; }
-        .scanner-line { position: absolute; width: 100%; height: 2px; background: #ef4444; box-shadow: 0 0 10px #ef4444; animation: scan 1.5s infinite linear; display: none; z-index: 10; }
-        @keyframes scan { 0% { top: 0%; opacity: 0; } 50% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
-        input[type="file"] { display: none; }
-        .cropper-container { max-height: 70vh !important; }
-        .tab-content { display: none; animation: fadeIn 0.3s; }
-        .tab-content.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    </style>
+    <!-- Tesseract.js para OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
 </head>
-<body class="pb-24 bg-gray-100">
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" fill="white"/>
+                </svg>
+                <span>Reintegros Cloud</span>
+            </div>
+            <div class="version">v4.0 Final</div>
+        </header>
 
-    <!-- Header -->
-    <header class="bg-gray-900 text-white p-4 shadow-lg sticky top-0 z-50">
-        <div class="flex justify-between items-center max-w-2xl mx-auto">
-            <h1 class="text-lg font-bold flex items-center gap-2 text-teal-400">
-                <span class="material-icons-round">cloud_done</span>
-                Reintegros Cloud
-            </h1>
-            <div class="text-xs bg-teal-900 px-2 py-1 rounded text-teal-200">v4.0 Final</div>
+        <!-- Estado de conexión -->
+        <div class="connection-status" id="connectionStatus">
+            <span class="status-indicator" id="statusIndicator"></span>
+            <span id="statusText">Conectado</span>
         </div>
-    </header>
 
-    <main class="max-w-2xl mx-auto p-4">
+        <!-- Notificación de sincronización -->
+        <div class="sync-notification" id="syncNotification">
+            <span>📤 Sincronizando datos...</span>
+        </div>
 
-        <!-- ======================= -->
-        <!-- VISTA 1: CAPTURA (FORM) -->
-        <!-- ======================= -->
-        <div id="view-capture" class="tab-content active space-y-4">
-            
-            <!-- Cámara y Foto -->
-            <div class="bg-white rounded-xl shadow p-4 border border-gray-200">
-                <div id="upload-placeholder" class="text-center py-6">
-                    <div class="bg-teal-50 text-teal-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <span class="material-icons-round text-3xl">camera_alt</span>
-                    </div>
-                    <h2 class="text-gray-800 font-bold">Capturar Factura</h2>
-                    <p class="text-gray-500 text-sm mb-4">Usa una foto clara</p>
-                    <label for="camera-input" class="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-full font-bold shadow-lg active:scale-95 transition cursor-pointer hover:bg-teal-700">
-                        Abrir Cámara
-                    </label>
-                    <input type="file" id="camera-input" accept="image/*" capture="environment" onchange="handleImageUpload(event)">
-                </div>
+        <!-- Sección de captura de factura -->
+        <div class="capture-section">
+            <div class="camera-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="#16a085">
+                    <circle cx="12" cy="12" r="3.2"/>
+                    <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
+                </svg>
+            </div>
+            <h2>Capturar Factura</h2>
+            <p>Usa una foto clara</p>
+            <button class="btn-primary" id="openCamera">Abrir Cámara</button>
+        </div>
 
-                <div id="preview-container" class="hidden relative">
-                    <div class="relative rounded-lg overflow-hidden bg-gray-900 mb-3" style="min-height: 200px;">
-                        <div class="scanner-line" id="scanner-line"></div>
-                        <img id="image-preview" class="w-full object-contain mx-auto max-h-[400px]">
-                    </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <button onclick="openCropper()" class="bg-indigo-100 text-indigo-700 py-2 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2">
-                            <span class="material-icons-round text-sm">crop</span> Recortar
-                        </button>
-                        <button onclick="resetImage()" class="bg-red-100 text-red-700 py-2 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2">
-                            <span class="material-icons-round text-sm">delete</span> Borrar
-                        </button>
-                    </div>
-                    <!-- OCR status -->
-                    <div id="ocr-status-container" class="hidden mt-3">
-                        <div class="w-full bg-gray-200 rounded-full h-1.5"><div class="bg-teal-500 h-1.5 rounded-full transition-all" id="ocr-bar" style="width: 0%"></div></div>
-                        <p class="text-xs text-gray-500 text-center mt-1" id="ocr-status-text">Leyendo...</p>
-                    </div>
-                </div>
+        <!-- Input de cámara oculto -->
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
+
+        <!-- Vista previa de imagen -->
+        <div class="image-preview" id="imagePreview" style="display: none;">
+            <img id="previewImage" alt="Vista previa">
+            <button class="btn-close" id="closePreview">✕</button>
+            <div class="ocr-status" id="ocrStatus">
+                <div class="spinner"></div>
+                <span>Extrayendo datos...</span>
+            </div>
+        </div>
+
+        <!-- Formulario de datos -->
+        <form class="data-form" id="dataForm" style="display: none;">
+            <h3>Datos</h3>
+            <div class="form-group">
+                <label for="fecha">FECHA</label>
+                <input type="date" id="fecha" name="fecha" required>
             </div>
 
-            <!-- Formulario -->
-            <form id="expense-form" class="bg-white rounded-xl shadow p-5 space-y-4 border border-gray-200" onsubmit="saveToCloud(event)">
-                <div class="flex items-center justify-between border-b pb-2">
-                    <h3 class="font-bold text-gray-700 flex items-center gap-2">
-                        <span class="material-icons-round text-teal-600">edit</span>
-                        Datos
-                    </h3>
-                    <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded" id="img-indicator">Sin Foto</span>
-                </div>
+            <div class="form-group">
+                <label for="descripcion">DESCRIPCIÓN</label>
+                <textarea id="descripcion" name="descripcion" rows="3" placeholder="Descripción del gasto" required></textarea>
+            </div>
 
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="text-xs font-bold text-gray-500 uppercase">Fecha</label>
-                        <input type="date" id="date" required class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm font-medium">
-                    </div>
-                    <div>
-                        <label class="text-xs font-bold text-gray-500 uppercase">Doc. No.</label>
-                        <div class="flex gap-1">
-                            <input type="text" id="docNo" placeholder="---" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm font-mono">
-                            <button type="button" onclick="triggerSpecificOCR('docNo')" class="bg-gray-200 rounded px-2"><span class="material-icons-round text-sm">crop_free</span></button>
-                        </div>
-                    </div>
-                </div>
+            <div class="form-group">
+                <label for="docNo">DOC. NO.</label>
+                <input type="text" id="docNo" name="docNo" placeholder="Número de documento">
+            </div>
 
-                <div>
-                    <label class="text-xs font-bold text-gray-500 uppercase">Descripción</label>
-                    <input type="text" id="description" required class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm">
-                </div>
+            <div class="form-group">
+                <label for="proyecto">PROYECTO</label>
+                <select id="proyecto" name="proyecto" required>
+                    <option value="">Seleccionar...</option>
+                    <option value="BI">BI</option>
+                    <option value="ATT">ATT</option>
+                    <option value="1bot">1bot</option>
+                    <option value="UNICEF">UNICEF</option>
+                    <option value="otro">Otro</option>
+                </select>
+            </div>
 
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="text-xs font-bold text-gray-500 uppercase">Proyecto</label>
-                        <select id="project" onchange="toggleOtherProject()" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm">
-                            <option value="1bot">1bot</option>
-                            <option value="BI">BI</option>
-                            <option value="ATT">ATT</option>
-                            <option value="Admin">Administración</option>
-                            <option value="Otro">Otro...</option>
-                        </select>
-                        <input type="text" id="otherProjectInput" placeholder="Nombre..." class="hidden mt-1 w-full border rounded p-1 text-sm">
-                    </div>
-                    <div>
-                        <label class="text-xs font-bold text-gray-500 uppercase">Solicitante</label>
-                        <input type="text" id="requester" value="Billy" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm">
-                    </div>
-                </div>
+            <div class="form-group" id="otroProyectoGroup" style="display: none;">
+                <label for="otroProyecto">ESPECIFICAR PROYECTO</label>
+                <input type="text" id="otroProyecto" name="otroProyecto" placeholder="Nombre del proyecto">
+            </div>
 
-                <div>
-                    <label class="text-xs font-bold text-gray-500 uppercase">Valor (Q)</label>
-                    <div class="relative flex items-center">
-                        <span class="absolute left-3 text-gray-500 font-bold">Q</span>
-                        <input type="number" id="amount" step="0.01" required placeholder="0.00" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 pl-8 text-xl font-bold text-gray-800">
-                        <button type="button" onclick="triggerSpecificOCR('amount')" class="absolute right-2 bg-gray-200 rounded p-1.5"><span class="material-icons-round text-sm">paid</span></button>
-                    </div>
-                </div>
+            <div class="form-group">
+                <label for="valor">VALOR (Q)</label>
+                <input type="number" id="valor" name="valor" step="0.01" placeholder="0.00" required>
+            </div>
 
-                <button type="submit" id="btn-save" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3.5 rounded-xl shadow-lg flex justify-center items-center gap-2">
-                    <span class="material-icons-round">cloud_upload</span> Guardar en Nube
+            <div class="form-group">
+                <label for="solicitante">SOLICITANTE</label>
+                <input type="text" id="solicitante" name="solicitante" placeholder="Nombre del solicitante" required>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn-secondary" id="cancelForm">Cancelar</button>
+                <button type="submit" class="btn-submit">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                        <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+                    </svg>
+                    Guardar en Nube
                 </button>
-            </form>
-        </div>
+            </div>
+        </form>
 
-        <!-- ======================= -->
-        <!-- VISTA 2: DASHBOARD      -->
-        <!-- ======================= -->
-        <div id="view-dashboard" class="tab-content space-y-4">
-            <div class="bg-white rounded-xl shadow p-4">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="font-bold text-gray-800">Base de Datos</h2>
-                    <button onclick="downloadCSV()" class="bg-green-100 text-green-700 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-green-200">
-                        <span class="material-icons-round text-sm">file_download</span> Bajar Excel
-                    </button>
-                </div>
-                
-                <!-- KPI Cards -->
-                <div class="grid grid-cols-2 gap-3 mb-4">
-                    <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                        <p class="text-xs text-blue-500 font-bold uppercase">Total Gastado</p>
-                        <p class="text-xl font-bold text-blue-800" id="dash-total">Q0.00</p>
-                    </div>
-                    <div class="bg-purple-50 p-3 rounded-lg border border-purple-100">
-                        <p class="text-xs text-purple-500 font-bold uppercase">Registros</p>
-                        <p class="text-xl font-bold text-purple-800" id="dash-count">0</p>
-                    </div>
-                </div>
+        <!-- Botón para ver datos pendientes -->
+        <button class="btn-pending" id="viewPending" style="display: none;">
+            <span class="pending-badge" id="pendingCount">0</span>
+            Ver Datos Pendientes
+        </button>
 
-                <!-- Gráfico -->
-                <div class="h-48 mb-4 relative">
-                    <canvas id="projectChart"></canvas>
+        <!-- Modal de datos pendientes -->
+        <div class="modal" id="pendingModal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Datos Pendientes de Sincronización</h3>
+                    <button class="btn-close" id="closePendingModal">✕</button>
                 </div>
-
-                <!-- Tabla Reciente -->
-                <h3 class="font-bold text-gray-700 text-sm mb-2">Historial en Nube</h3>
-                <div class="overflow-x-auto max-h-60">
-                    <table class="w-full text-xs text-left text-gray-500">
-                        <thead class="bg-gray-100 text-gray-700 uppercase sticky top-0">
-                            <tr><th class="p-2">Fecha</th><th class="p-2">Desc</th><th class="p-2 text-right">Valor</th><th class="p-2"></th></tr>
-                        </thead>
-                        <tbody id="dash-table-body">
-                            <tr><td colspan="4" class="p-4 text-center">Cargando datos...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+                <div class="pending-list" id="pendingList"></div>
+                <button class="btn-primary" id="syncAll">Sincronizar Todo Ahora</button>
             </div>
         </div>
 
-    </main>
-
-    <!-- NAVIGATION BAR -->
-    <nav class="fixed bottom-0 w-full bg-white border-t border-gray-200 shadow-lg z-40 flex justify-around py-2">
-        <button onclick="switchTab('capture')" class="flex flex-col items-center text-teal-600 w-full" id="nav-capture">
-            <span class="material-icons-round">add_circle</span>
-            <span class="text-[10px] font-bold">Nuevo Gasto</span>
-        </button>
-        <button onclick="switchTab('dashboard')" class="flex flex-col items-center text-gray-400 hover:text-blue-600 w-full" id="nav-dashboard">
-            <span class="material-icons-round">storage</span>
-            <span class="text-[10px] font-bold">Ver Datos</span>
-        </button>
-    </nav>
-
-    <!-- MODAL RECORTE -->
-    <div id="cropper-modal" class="fixed inset-0 bg-black bg-opacity-95 z-[60] hidden flex flex-col">
-        <div class="flex-1 flex items-center justify-center p-4 overflow-hidden"><img id="image-to-crop" class="max-w-full"></div>
-        <div class="bg-gray-900 p-4 flex gap-4"><button onclick="closeCropper()" class="flex-1 bg-gray-600 text-white py-3 rounded">Cancelar</button><button onclick="performCrop()" class="flex-1 bg-white text-black py-3 rounded font-bold">Recortar</button></div>
+        <!-- Footer con indicador de datos guardados -->
+        <footer>
+            <div class="saved-data">
+                <span id="savedCount">0</span> registros guardados localmente
+            </div>
+        </footer>
     </div>
 
-    <!-- LOADING OVERLAY -->
-    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-80 z-[80] hidden flex flex-col items-center justify-center text-white">
-        <div class="w-12 h-12 border-4 border-t-4 border-gray-200 rounded-full animate-spin mb-4" style="border-top-color: #14b8a6"></div>
-        <p id="loading-text" class="font-bold">Guardando en Nube...</p>
-    </div>
-
-    <script type="module">
-        // --- 1. FIREBASE CONFIG & INIT ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Obtener config del entorno (Proporcionado automáticamente)
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'reintegros-app';
-        let currentUser = null;
-        let expensesData = []; // Cache local para exportación
-
-        // Iniciar Sesión Anónima
-        signInAnonymously(auth).catch((error) => console.error("Auth Error", error));
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                currentUser = user;
-                initRealtimeListener(); // Escuchar cambios en la DB
-            }
-        });
-
-        // --- 2. GLOBAL VARIABLES ---
-        let originalImageFile = null;
-        let compressedImageBase64 = null;
-        let cropper = null;
-        let myChart = null;
-
-        // Exponer funciones globales para el HTML
-        window.handleImageUpload = handleImageUpload;
-        window.resetImage = resetImage;
-        window.openCropper = openCropper;
-        window.closeCropper = closeCropper;
-        window.performCrop = performCrop;
-        window.triggerSpecificOCR = triggerSpecificOCR;
-        window.saveToCloud = saveToCloud;
-        window.toggleOtherProject = toggleOtherProject;
-        window.switchTab = switchTab;
-        window.downloadCSV = downloadCSV;
-        window.deleteExpense = deleteExpense;
-
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('date').valueAsDate = new Date();
-        });
-
-        // --- 3. FIRESTORE LOGIC ---
-        
-        // Guardar Gasto
-        async function saveToCloud(e) {
-            e.preventDefault();
-            if (!currentUser) { alert("Conectando con la nube... espera un momento."); return; }
-
-            const loading = document.getElementById('loading-overlay');
-            loading.classList.remove('hidden');
-
-            const proj = document.getElementById('project').value === 'Otro' ? document.getElementById('otherProjectInput').value : document.getElementById('project').value;
-            
-            const expense = {
-                date: document.getElementById('date').value,
-                description: document.getElementById('description').value,
-                docNo: document.getElementById('docNo').value || "S/N",
-                project: proj,
-                amount: parseFloat(document.getElementById('amount').value),
-                requester: document.getElementById('requester').value,
-                image: compressedImageBase64 || "", // Base64 comprimido
-                createdAt: Date.now()
-            };
-
-            try {
-                // Ruta estricta requerida por el entorno
-                const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'reintegros');
-                await addDoc(colRef, expense);
-                
-                alert("✅ ¡Guardado Exitoso!\nLos datos ya están seguros en la nube.");
-                resetForm();
-            } catch (err) {
-                console.error(err);
-                alert("Error al guardar: " + err.message);
-            } finally {
-                loading.classList.add('hidden');
-            }
-        }
-
-        // Escuchar Datos (Dashboard en Tiempo Real)
-        function initRealtimeListener() {
-            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'reintegros');
-            // Nota: No usamos orderBy complejo para evitar índices compuestos
-            onSnapshot(colRef, (snapshot) => {
-                expensesData = [];
-                snapshot.forEach(doc => {
-                    expensesData.push({ id: doc.id, ...doc.data() });
-                });
-                
-                // Ordenar en memoria (más reciente primero)
-                expensesData.sort((a, b) => b.createdAt - a.createdAt);
-                
-                updateDashboard(expensesData);
-            }, (error) => {
-                console.error("Error escuchando datos:", error);
-            });
-        }
-
-        function deleteExpense(id) {
-            if(!confirm("¿Eliminar este registro de la base de datos?")) return;
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'reintegros', id);
-            deleteDoc(docRef).catch(err => alert("Error borrando: " + err));
-        }
-
-        // --- 4. EXPORTACIÓN A EXCEL/CSV ---
-        function downloadCSV() {
-            if (expensesData.length === 0) { alert("No hay datos para descargar"); return; }
-
-            // Formato CSV compatible con Excel
-            let csv = "Fecha,Descripción del Gasto,Doc. No.,Programa / Proyecto,Valor,Solicitante\n";
-            
-            expensesData.forEach(row => {
-                // Formatear fecha DD/MM/YYYY para Excel
-                const d = row.date.split('-');
-                const fecha = `${d[2]}/${d[1]}/${d[0]}`;
-                
-                const line = [
-                    fecha,
-                    `"${row.description.replace(/"/g, '""')}"`, // Escapar comillas
-                    `"${row.docNo}"`, // Forzar texto
-                    row.project,
-                    row.amount.toFixed(2),
-                    row.requester
-                ].join(",");
-                csv += line + "\n";
-            });
-
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.setAttribute("href", url);
-            link.setAttribute("download", "reintegros_data.csv");
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        // --- 5. UI & UTILS ---
-
-        function updateDashboard(data) {
-            let total = 0;
-            const projectMap = {};
-            const tbody = document.getElementById('dash-table-body');
-            tbody.innerHTML = "";
-
-            data.forEach(item => {
-                total += item.amount;
-                projectMap[item.project] = (projectMap[item.project] || 0) + item.amount;
-
-                // Fila tabla
-                const d = item.date.split('-');
-                const fechaCorta = `${d[2]}/${d[1]}`;
-                
-                tbody.innerHTML += `
-                    <tr class="border-b hover:bg-gray-50">
-                        <td class="p-2 whitespace-nowrap">${fechaCorta}</td>
-                        <td class="p-2 truncate max-w-[120px]">
-                            <div class="font-medium text-gray-800">${item.description}</div>
-                            <div class="text-[10px] text-gray-400">${item.docNo}</div>
-                        </td>
-                        <td class="p-2 text-right font-bold text-teal-600">Q${item.amount.toFixed(2)}</td>
-                        <td class="p-2 text-center">
-                            <button onclick="deleteExpense('${item.id}')" class="text-red-400 hover:text-red-600">
-                                <span class="material-icons-round text-sm">delete</span>
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            });
-
-            document.getElementById('dash-total').innerText = `Q${total.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-            document.getElementById('dash-count').innerText = data.length;
-
-            // Chart
-            const ctx = document.getElementById('projectChart').getContext('2d');
-            if(myChart) myChart.destroy();
-            myChart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: Object.keys(projectMap),
-                    datasets: [{
-                        data: Object.values(projectMap),
-                        backgroundColor: ['#14b8a6', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444']
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } } }
-            });
-        }
-
-        function resetForm() {
-            document.getElementById('description').value = "";
-            document.getElementById('amount').value = "";
-            document.getElementById('docNo').value = "";
-            resetImage();
-        }
-
-        // --- FUNCIONES OCR Y CROPPER (Iguales, adaptadas a módulos) ---
-        
-        async function handleImageUpload(e) {
-            const file = e.target.files[0];
-            if(!file) return;
-            originalImageFile = file;
-            
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                document.getElementById('image-preview').src = ev.target.result;
-                document.getElementById('upload-placeholder').classList.add('hidden');
-                document.getElementById('preview-container').classList.remove('hidden');
-                const indicator = document.getElementById('img-indicator');
-                if(indicator) {
-                    indicator.innerText = "Foto OK";
-                    indicator.className = "text-xs text-green-600 bg-green-100 px-2 py-1 rounded";
-                }
-            };
-            reader.readAsDataURL(file);
-
-            try {
-                compressedImageBase64 = await compressImage(file);
-                runOCR(file);
-            } catch(err) { console.log(err); }
-        }
-
-        async function runOCR(blob) {
-            document.getElementById('ocr-status-container').classList.remove('hidden');
-            const bar = document.getElementById('ocr-bar');
-            
-            try {
-                const res = await Tesseract.recognize(blob, 'spa', {
-                    logger: m => { if(m.status==='recognizing text') bar.style.width = (m.progress*100) + '%'; }
-                });
-                processOCR(res.data.text);
-            } catch(e) { console.error(e); } 
-            finally { setTimeout(() => document.getElementById('ocr-status-container').classList.add('hidden'), 1000); }
-        }
-
-        function processOCR(text) {
-            const clean = text.replace(/[\r\n]+/g, '\n');
-            const money = clean.match(/(?:Q\s?)?([0-9]{1,3}(?:[,.][0-9]{3})*[.,][0-9]{2})/g);
-            if(money) {
-                const vals = money.map(v => parseFloat(v.replace(/[Q\s,]/g, '').replace(/(\d)\.(\d{3})/, '$1$2'))); 
-                const max = Math.max(...vals.filter(n => !isNaN(n)));
-                if(max > 0) document.getElementById('amount').value = max.toFixed(2);
-            }
-            const date = clean.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
-            if(date) {
-                let y = date[3];
-                if(y.length===2) y = "20"+y;
-                document.getElementById('date').value = `${y}-${date[2].padStart(2,'0')}-${date[1].padStart(2,'0')}`;
-            }
-            const doc = clean.match(/(?:serie|no|dte|fac)[\D]{0,10}(\b[A-Z0-9\-]{5,}\b)/i);
-            if(doc) document.getElementById('docNo').value = doc[1];
-        }
-
-        function openCropper() {
-            if(!originalImageFile) return;
-            const modal = document.getElementById('cropper-modal');
-            const img = document.getElementById('image-to-crop');
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                img.src = e.target.result;
-                modal.classList.remove('hidden');
-                if(cropper) cropper.destroy();
-                cropper = new Cropper(img, { viewMode: 1, autoCropArea: 0.5 });
-            };
-            reader.readAsDataURL(originalImageFile);
-        }
-
-        function closeCropper() { document.getElementById('cropper-modal').classList.add('hidden'); if(cropper) cropper.destroy(); }
-        
-        function performCrop() {
-            cropper.getCroppedCanvas().toBlob(blob => {
-                closeCropper();
-                runOCR(blob);
-            });
-        }
-
-        function triggerSpecificOCR(field) {
-            if(!originalImageFile) { alert("Falta foto"); return; }
-            alert("Recorta la zona del dato");
-            openCropper();
-        }
-
-        function compressImage(f) {
-            return new Promise((res, rej) => {
-                const r = new FileReader(); r.readAsDataURL(f);
-                r.onload = e => {
-                    const i = new Image(); i.src = e.target.result;
-                    i.onload = () => {
-                        const c = document.createElement('canvas');
-                        const s = 800/i.width;
-                        c.width = 800; c.height = i.height*s;
-                        c.getContext('2d').drawImage(i,0,0,c.width,c.height);
-                        res(c.toDataURL('image/jpeg', 0.6));
-                    }
-                }
-            });
-        }
-
-        function resetImage() { 
-            originalImageFile = null; compressedImageBase64 = null;
-            document.getElementById('upload-placeholder').classList.remove('hidden');
-            document.getElementById('preview-container').classList.add('hidden');
-            const indicator = document.getElementById('img-indicator');
-            if(indicator) {
-                indicator.innerText = "Sin Foto";
-                indicator.className = "text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded";
-            }
-        }
-
-        function toggleOtherProject() {
-            const p = document.getElementById('project');
-            const i = document.getElementById('otherProjectInput');
-            if(p.value==='Otro') i.classList.remove('hidden'); else i.classList.add('hidden');
-        }
-
-        function switchTab(tab) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.getElementById('view-' + tab).classList.add('active');
-            const btnCap = document.getElementById('nav-capture');
-            const btnDash = document.getElementById('nav-dashboard');
-            if(tab === 'capture') {
-                btnCap.classList.replace('text-gray-400', 'text-teal-600');
-                btnDash.classList.replace('text-blue-600', 'text-gray-400');
-            } else {
-                btnDash.classList.replace('text-gray-400', 'text-blue-600');
-                btnCap.classList.replace('text-teal-600', 'text-gray-400');
-            }
-        }
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>
