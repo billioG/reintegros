@@ -33,6 +33,7 @@ async function initializeApp() {
 
   try {
     await initDB();
+    console.log('✓ IndexedDB inicializada correctamente');
   } catch (err) {
     console.error('Error inicializando DB:', err);
     alert('Error inicializando base de datos local');
@@ -53,92 +54,179 @@ async function initializeApp() {
 }
 
 // ============================================
-// INDEXEDDB
+// INDEXEDDB - CORREGIDO
 // ============================================
 
 function initDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      console.error('Error al abrir IndexedDB:', request.error);
+      reject(request.error);
+    };
+    
     request.onsuccess = () => {
       db = request.result;
+      
+      // Manejar cierre inesperado
+      db.onclose = () => {
+        console.warn('⚠️ IndexedDB cerrada inesperadamente, reabriendo...');
+        initDB().catch(console.error);
+      };
+      
+      // Manejar errores de versión
+      db.onversionchange = () => {
+        console.warn('⚠️ Otra pestaña está actualizando la DB');
+        db.close();
+      };
+      
       resolve(db);
     };
 
     request.onupgradeneeded = event => {
       const dbUpgrade = event.target.result;
-      if (!dbUpgrade.objectStoreNames.contains(STORE_NAME)) {
-        const store = dbUpgrade.createObjectStore(STORE_NAME, {
-          keyPath: 'id',
-          autoIncrement: true
-        });
-        store.createIndex('timestamp', 'timestamp', { unique: false });
-        store.createIndex('synced', 'synced', { unique: false });
+      
+      // Eliminar store anterior si existe
+      if (dbUpgrade.objectStoreNames.contains(STORE_NAME)) {
+        dbUpgrade.deleteObjectStore(STORE_NAME);
       }
+      
+      // Crear store nuevo
+      const store = dbUpgrade.createObjectStore(STORE_NAME, {
+        keyPath: 'id',
+        autoIncrement: true
+      });
+      
+      store.createIndex('timestamp', 'timestamp', { unique: false });
+      store.createIndex('synced', 'synced', { unique: false });
+      
+      console.log('✓ ObjectStore creado');
+    };
+    
+    request.onblocked = () => {
+      console.warn('⚠️ IndexedDB bloqueada por otra pestaña');
     };
   });
 }
 
-function saveToIndexedDB(data) {
+async function ensureDB() {
+  if (!db || db.objectStoreNames.length === 0) {
+    console.log('Reconectando a IndexedDB...');
+    await initDB();
+  }
+  return db;
+}
+
+async function saveToIndexedDB(data) {
+  const database = await ensureDB();
+  
   return new Promise((resolve, reject) => {
-    const tx = db.transaction([STORE_NAME], 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const payload = {
-      ...data,
-      timestamp: Date.now(),
-      synced: false
-    };
-    const req = store.add(payload);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    try {
+      const tx = database.transaction([STORE_NAME], 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      
+      const payload = {
+        ...data,
+        timestamp: Date.now(),
+        synced: false
+      };
+      
+      const req = store.add(payload);
+      
+      req.onsuccess = () => {
+        console.log('✓ Datos guardados en IndexedDB con ID:', req.result);
+        resolve(req.result);
+      };
+      
+      req.onerror = () => {
+        console.error('Error al guardar en IndexedDB:', req.error);
+        reject(req.error);
+      };
+      
+      tx.oncomplete = () => {
+        console.log('✓ Transacción completada');
+      };
+      
+      tx.onerror = () => {
+        console.error('Error en transacción:', tx.error);
+        reject(tx.error);
+      };
+      
+    } catch (error) {
+      console.error('Error en saveToIndexedDB:', error);
+      reject(error);
+    }
   });
 }
 
-function getAllData() {
+async function getAllData() {
+  const database = await ensureDB();
+  
   return new Promise((resolve, reject) => {
-    const tx = db.transaction([STORE_NAME], 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
+    try {
+      const tx = database.transaction([STORE_NAME], 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.getAll();
+      
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
-function getPendingData() {
+async function getPendingData() {
+  const database = await ensureDB();
+  
   return new Promise((resolve, reject) => {
-    const tx = db.transaction([STORE_NAME], 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.getAll();
-    req.onsuccess = () => {
-      const all = req.result || [];
-      const pending = all.filter(item => !item.synced);
-      resolve(pending);
-    };
-    req.onerror = () => reject(req.error);
+    try {
+      const tx = database.transaction([STORE_NAME], 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.getAll();
+      
+      req.onsuccess = () => {
+        const all = req.result || [];
+        const pending = all.filter(item => !item.synced);
+        resolve(pending);
+      };
+      
+      req.onerror = () => reject(req.error);
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
-function markAsSynced(id) {
+async function markAsSynced(id) {
+  const database = await ensureDB();
+  
   return new Promise((resolve, reject) => {
-    const tx = db.transaction([STORE_NAME], 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.get(id);
+    try {
+      const tx = database.transaction([STORE_NAME], 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(id);
 
-    req.onsuccess = () => {
-      const data = req.result;
-      if (!data) {
-        resolve();
-        return;
-      }
-      data.synced = true;
-      data.syncedAt = Date.now();
-      const updateReq = store.put(data);
-      updateReq.onsuccess = () => resolve();
-      updateReq.onerror = () => reject(updateReq.error);
-    };
+      req.onsuccess = () => {
+        const data = req.result;
+        if (!data) {
+          resolve();
+          return;
+        }
+        
+        data.synced = true;
+        data.syncedAt = Date.now();
+        
+        const updateReq = store.put(data);
+        updateReq.onsuccess = () => resolve();
+        updateReq.onerror = () => reject(updateReq.error);
+      };
 
-    req.onerror = () => reject(req.error);
+      req.onerror = () => reject(req.error);
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
@@ -168,19 +256,16 @@ function preprocessImage(imageElement) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    // Aumentar resolución para mejor OCR
     const scaleFactor = 2;
     canvas.width = imageElement.width * scaleFactor;
     canvas.height = imageElement.height * scaleFactor;
     
-    // Dibujar imagen escalada
     ctx.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
     
-    // Obtener datos de píxeles
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
     
-    // PASO 1: Convertir a escala de grises
+    // Convertir a escala de grises
     for (let i = 0; i < data.length; i += 4) {
       const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
       data[i] = gray;
@@ -188,7 +273,7 @@ function preprocessImage(imageElement) {
       data[i + 2] = gray;
     }
     
-    // PASO 2: Aumentar contraste (ajuste de histograma)
+    // Aumentar contraste
     const contrastFactor = 1.5;
     for (let i = 0; i < data.length; i += 4) {
       data[i] = Math.min(255, Math.max(0, (data[i] - 128) * contrastFactor + 128));
@@ -196,7 +281,7 @@ function preprocessImage(imageElement) {
       data[i + 2] = data[i];
     }
     
-    // PASO 3: Umbralización (binarización) - texto negro sobre fondo blanco
+    // Umbralización
     const threshold = 128;
     for (let i = 0; i < data.length; i += 4) {
       const value = data[i] > threshold ? 255 : 0;
@@ -205,13 +290,8 @@ function preprocessImage(imageElement) {
       data[i + 2] = value;
     }
     
-    // PASO 4: Aplicar nitidez (sharpening)
-    const sharpenKernel = [
-      0, -1, 0,
-      -1, 5, -1,
-      0, -1, 0
-    ];
-    
+    // Aplicar nitidez
+    const sharpenKernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
     const tempData = new Uint8ClampedArray(data);
     const width = canvas.width;
     
@@ -233,12 +313,10 @@ function preprocessImage(imageElement) {
       }
     }
     
-    // Aplicar cambios
     ctx.putImageData(imageData, 0, 0);
     
-    console.log('✓ Imagen preprocesada: escala de grises + contraste + umbralización + nitidez');
+    console.log('✓ Imagen preprocesada');
     
-    // Convertir canvas a blob
     canvas.toBlob((blob) => {
       resolve(blob);
     }, 'image/png');
@@ -246,7 +324,7 @@ function preprocessImage(imageElement) {
 }
 
 // ============================================
-// CÁMARA Y OCR CON PREPROCESAMIENTO
+// CÁMARA Y OCR
 // ============================================
 
 function openCamera() {
@@ -269,7 +347,6 @@ function handleImageCapture(e) {
     document.getElementById('ocrStatus').innerHTML =
       '<div class="spinner"></div><span>Preparando imagen...</span>';
 
-    // Esperar a que la imagen se cargue completamente
     img.onload = async () => {
       await processOCR(img);
     };
@@ -279,60 +356,49 @@ function handleImageCapture(e) {
 
 async function processOCR(imageElement) {
   try {
-    console.log('=== INICIANDO OCR CON PREPROCESAMIENTO ===');
-    console.log('Tesseract cargado:', typeof Tesseract);
+    console.log('=== INICIANDO OCR ===');
     
     if (typeof Tesseract === 'undefined') {
-      throw new Error('Tesseract no está cargado. Verifica que esté en index.html');
+      throw new Error('Tesseract no está cargado');
     }
     
     document.getElementById('ocrStatus').innerHTML =
-      '<div class="spinner"></div><span>Mejorando calidad de imagen...</span>';
+      '<div class="spinner"></div><span>Mejorando imagen...</span>';
     
-    // Preprocesar imagen para mejorar calidad
     const preprocessedBlob = await preprocessImage(imageElement);
-    
-    console.log('✓ Imagen preprocesada exitosamente');
+    console.log('✓ Imagen preprocesada');
     
     document.getElementById('ocrStatus').innerHTML =
-      '<div class="spinner"></div><span>Extrayendo texto...</span>';
+      '<div class="spinner"></div><span>Leyendo texto...</span>';
     
-    // Ejecutar OCR con imagen preprocesada
     const result = await Tesseract.recognize(preprocessedBlob, 'spa', {
       logger: m => {
         if (m.status === 'recognizing text') {
           const progress = Math.round(m.progress * 100);
-          console.log(`OCR: ${progress}%`);
           document.getElementById('ocrStatus').innerHTML = 
-            `<div class="spinner"></div><span>Leyendo texto... ${progress}%</span>`;
+            `<div class="spinner"></div><span>Leyendo... ${progress}%</span>`;
         }
       }
     });
     
-    console.log('✓ OCR completado');
-    
     let text = '';
-    
     if (result.data && result.data.text) {
       text = result.data.text;
     } else if (result.text) {
       text = result.text;
     }
     
-    console.log('Texto OCR extraído:');
-    console.log(text);
-    console.log('Longitud:', text.length, 'caracteres');
-    console.log('Confianza:', result.data?.confidence || 'N/A');
+    console.log('Texto extraído:', text);
 
     if (!text || text.trim().length === 0) {
-      throw new Error('No se pudo extraer texto de la imagen');
+      throw new Error('No se pudo extraer texto');
     }
 
     const extracted = extractInvoiceData(text);
     fillForm(extracted);
 
     document.getElementById('ocrStatus').innerHTML =
-      '<span style="color: #10b981;">✓ Datos extraídos exitosamente</span>';
+      '<span style="color: #10b981;">✓ Datos extraídos</span>';
     
     setTimeout(() => {
       document.getElementById('ocrStatus').style.display = 'none';
@@ -340,21 +406,20 @@ async function processOCR(imageElement) {
     }, 1500);
     
   } catch (error) {
-    console.error('❌ Error en OCR:', error);
-    console.error('Stack:', error.stack);
+    console.error('Error en OCR:', error);
     
     document.getElementById('ocrStatus').innerHTML =
-      '<span style="color: #ef4444;">⚠️ No se pudo leer la imagen. Complete manualmente.</span>';
+      '<span style="color: #ef4444;">⚠️ Complete manualmente</span>';
     
     setTimeout(() => {
       document.getElementById('ocrStatus').style.display = 'none';
       document.getElementById('dataForm').style.display = 'block';
-    }, 3000);
+    }, 2500);
   }
 }
 
 // ============================================
-// EXTRACCIÓN DE DATOS OPTIMIZADA
+// EXTRACCIÓN DE DATOS
 // ============================================
 
 function extractInvoiceData(text) {
@@ -363,135 +428,97 @@ function extractInvoiceData(text) {
   const lines = cleanText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
   console.log('=== EXTRAYENDO DATOS ===');
-  console.log('Total de líneas:', lines.length);
 
-  // 1. EXTRAER NÚMERO DE AUTORIZACIÓN
+  // 1. NÚMERO DE AUTORIZACIÓN
   let dteFound = '';
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
-    // Buscar "NO. AUTORIZACIÓN" o variantes
     if (/NO\.?\s*AUTORIZACI[OÓ]N/i.test(line)) {
-      console.log('✓ Línea con NO. AUTORIZACIÓN encontrada:', line);
-      
-      // Buscar UUID en las próximas 3 líneas
       for (let j = i; j < Math.min(i + 4, lines.length); j++) {
         const checkLine = lines[j];
-        
-        // UUID formato: XXXXXXXX-XXXX-XXXX-XXXX-XXXX/XXX
         const uuidMatch = checkLine.match(/([A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]+(?:\/\d+)?)/i);
         if (uuidMatch) {
           dteFound = uuidMatch[1];
-          console.log('✓ UUID encontrado:', dteFound);
-          break;
-        }
-        
-        // Buscar formato alternativo con guiones y letras
-        const altMatch = checkLine.match(/([A-Z0-9]{4,}-[A-Z0-9]{4,}-[A-Z0-9]{4,}(?:-[A-Z0-9]+)?(?:\/\d+)?)/i);
-        if (altMatch) {
-          dteFound = altMatch[1];
-          console.log('✓ Código alternativo encontrado:', dteFound);
+          console.log('✓ UUID:', dteFound);
           break;
         }
       }
-      
       if (dteFound) break;
     }
     
-    // Buscar SERIE
     if (/SERIE:/i.test(line) && !dteFound) {
       const serieMatch = line.match(/SERIE:\s*([A-Z0-9\-]+)/i);
       if (serieMatch) {
         dteFound = serieMatch[1];
-        console.log('✓ SERIE encontrada:', dteFound);
+        console.log('✓ SERIE:', dteFound);
       }
     }
     
-    // Buscar NUMERO
     if (/N[UÚ]MERO:/i.test(line) && !dteFound) {
       const numMatch = line.match(/N[UÚ]MERO:\s*(\d{6,}(?:\/\d+)?)/i);
       if (numMatch) {
         dteFound = numMatch[1];
-        console.log('✓ NUMERO encontrado:', dteFound);
+        console.log('✓ NUMERO:', dteFound);
       }
     }
   }
 
-  if (dteFound) {
-    data.docNo = dteFound;
-  } else {
-    console.log('✗ No se encontró número de autorización/factura');
-  }
+  if (dteFound) data.docNo = dteFound;
 
-  // 2. EXTRAER TOTAL
+  // 2. TOTAL
   let valorFound = '';
   const allMoneyMatches = [];
   
   for (const line of lines) {
-    // Buscar línea con "TOTAL"
     if (/TOTAL/i.test(line)) {
-      console.log('Línea con TOTAL:', line);
-      
-      // Extraer monto con Q
       const totalMatch = line.match(/Q\s*(\d+(?:[.,]\d+)?)/i);
       if (totalMatch) {
         let valor = totalMatch[1].replace(',', '.');
         valor = parseFloat(valor);
         if (valor > 0 && !isNaN(valor)) {
           valorFound = valor.toFixed(2);
-          console.log('✓ TOTAL encontrado:', valorFound);
+          console.log('✓ TOTAL:', valorFound);
           break;
         }
       }
     }
     
-    // Recolectar todos los montos encontrados
     const moneyMatches = line.match(/Q\s*(\d+(?:[.,]\d{2})?)/gi);
     if (moneyMatches) {
       moneyMatches.forEach(m => {
         let num = m.replace(/Q\s*/i, '').replace(',', '.');
         num = parseFloat(num);
-        if (!isNaN(num) && num > 0) {
-          allMoneyMatches.push(num);
-        }
+        if (!isNaN(num) && num > 0) allMoneyMatches.push(num);
       });
     }
   }
   
-  // Si no se encontró en TOTAL, usar el monto más grande
   if (!valorFound && allMoneyMatches.length > 0) {
     valorFound = Math.max(...allMoneyMatches).toFixed(2);
-    console.log('✓ TOTAL encontrado (máximo de todos):', valorFound);
+    console.log('✓ TOTAL (max):', valorFound);
   }
 
-  if (valorFound) {
-    data.valor = valorFound;
-  } else {
-    console.log('✗ No se encontró el total');
-  }
+  if (valorFound) data.valor = valorFound;
 
-  // 3. EXTRAER FECHA
+  // 3. FECHA
   let fechaFound = '';
   
   for (const line of lines) {
-    // Buscar "FECHA DE EMISIÓN"
     if (/FECHA\s+(?:DE\s+)?EMISI[OÓ]N/i.test(line)) {
-      console.log('✓ Línea con FECHA DE EMISIÓN:', line);
-      
       const fechaMatch = line.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
       if (fechaMatch) {
         const day = fechaMatch[1].padStart(2, '0');
         const month = fechaMatch[2].padStart(2, '0');
         const year = fechaMatch[3];
         fechaFound = `${year}-${month}-${day}`;
-        console.log('✓ Fecha encontrada:', fechaFound);
+        console.log('✓ FECHA:', fechaFound);
         break;
       }
     }
   }
   
-  // Fallback: buscar cualquier fecha válida
   if (!fechaFound) {
     for (const line of lines) {
       const fechaMatch = line.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
@@ -500,27 +527,20 @@ function extractInvoiceData(text) {
         const month = parseInt(fechaMatch[2]);
         const year = fechaMatch[3];
         
-        // Validar fecha
         if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
           fechaFound = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-          console.log('✓ Fecha encontrada (fallback):', fechaFound);
+          console.log('✓ FECHA (fallback):', fechaFound);
           break;
         }
       }
     }
   }
 
-  if (fechaFound) {
-    data.fecha = fechaFound;
-  } else {
-    console.log('✗ No se encontró la fecha');
-  }
+  if (fechaFound) data.fecha = fechaFound;
 
-  console.log('=== RESULTADO FINAL ===');
-  console.log('📅 Fecha:', data.fecha || 'NO ENCONTRADA');
-  console.log('🔢 Autorización/Factura:', data.docNo || 'NO ENCONTRADA');
-  console.log('💰 Total:', data.valor ? 'Q ' + data.valor : 'NO ENCONTRADO');
-  console.log('========================');
+  console.log('📅 Fecha:', data.fecha || 'NO');
+  console.log('🔢 Doc:', data.docNo || 'NO');
+  console.log('💰 Total:', data.valor ? 'Q ' + data.valor : 'NO');
 
   return data;
 }
@@ -533,8 +553,7 @@ function fillForm(data) {
   if (data.fecha) {
     fechaInput.value = data.fecha;
   } else {
-    const today = new Date().toISOString().split('T')[0];
-    fechaInput.value = today;
+    fechaInput.value = new Date().toISOString().split('T')[0];
   }
   
   if (data.docNo) docInput.value = data.docNo;
@@ -561,10 +580,9 @@ async function handleFormSubmit(e) {
   e.preventDefault();
 
   const proyectoSelect = document.getElementById('proyecto');
-  const proyecto =
-    proyectoSelect.value === 'otro'
-      ? document.getElementById('otroProyecto').value
-      : proyectoSelect.value;
+  const proyecto = proyectoSelect.value === 'otro'
+    ? document.getElementById('otroProyecto').value
+    : proyectoSelect.value;
 
   const formData = {
     fecha: document.getElementById('fecha').value,
@@ -577,10 +595,11 @@ async function handleFormSubmit(e) {
   };
 
   try {
+    console.log('Guardando datos...');
     await saveToIndexedDB(formData);
     await updatePendingCount();
     await updateDashboard();
-    showNotification('✅ Datos guardados localmente');
+    showNotification('✅ Datos guardados');
 
     if (isOnline) {
       await syncPendingData();
@@ -588,8 +607,8 @@ async function handleFormSubmit(e) {
 
     resetForm();
   } catch (err) {
-    console.error('Error guardando datos:', err);
-    showNotification('❌ Error al guardar datos');
+    console.error('Error guardando:', err);
+    showNotification('❌ Error al guardar');
   }
 }
 
@@ -611,22 +630,17 @@ function closePreview() {
 }
 
 // ============================================
-// SINCRONIZACIÓN CON GOOGLE SHEETS
+// SINCRONIZACIÓN
 // ============================================
 
 async function uploadToGoogleDrive(base64Image, filename) {
-  console.log('📷 Imagen preparada para Sheets:', filename);
+  console.log('📷 Imagen lista:', filename);
   return base64Image;
 }
 
 async function saveToGoogleSheets(data) {
-  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbyUJqcZ9RFXhDI-9L4V89EeYCLmwGxz5w_OWlBvS2uprNrj_xUAB5Z3YCM-X2aj9DDK/exec') {
-    console.error('⚠️ Apps Script URL no configurada');
-    return;
-  }
-
   try {
-    console.log('📝 Guardando en Sheets con imagen...');
+    console.log('📝 Guardando en Sheets...');
     
     const response = await fetch(`${APPS_SCRIPT_URL}?action=addRow`, {
       method: 'POST',
@@ -636,28 +650,26 @@ async function saveToGoogleSheets(data) {
     const result = await response.json();
     
     if (result.success) {
-      console.log('✅ Datos guardados correctamente');
-      console.log('📸 Imagen guardada en hoja:', result.imageSheet);
+      console.log('✅ Guardado en Sheet');
     } else {
-      console.error('❌ Error al guardar:', result.error);
       throw new Error(result.error);
     }
     
   } catch (error) {
-    console.error('❌ Error guardando en Sheets:', error);
+    console.error('❌ Error:', error);
     throw error;
   }
 }
 
 async function syncPendingData(forceMessage = false) {
   if (!isOnline) {
-    showNotification('⚠️ Sin conexión a internet');
+    showNotification('⚠️ Sin conexión');
     return;
   }
 
   const pending = await getPendingData();
   if (pending.length === 0) {
-    if (forceMessage) showNotification('✓ No hay datos pendientes para sincronizar');
+    if (forceMessage) showNotification('✓ Sin datos pendientes');
     return;
   }
 
@@ -687,7 +699,7 @@ async function syncPendingData(forceMessage = false) {
       successCount++;
       
     } catch (err) {
-      console.error('Error sincronizando item:', err);
+      console.error('Error sincronizando:', err);
       errorCount++;
     }
   }
@@ -697,17 +709,17 @@ async function syncPendingData(forceMessage = false) {
   await updateDashboard();
   
   if (successCount > 0) {
-    showNotification(`✅ ${successCount} registro(s) sincronizados correctamente`);
+    showNotification(`✅ ${successCount} sincronizados`);
     localStorage.setItem('lastSync', new Date().toISOString());
   }
   
   if (errorCount > 0) {
-    showNotification(`⚠️ ${errorCount} registro(s) fallaron. Se reintentarán después.`);
+    showNotification(`⚠️ ${errorCount} fallaron`);
   }
 }
 
 // ============================================
-// UI / DASHBOARD / ESTADO
+// UI
 // ============================================
 
 function updateConnectionStatus() {
@@ -724,11 +736,9 @@ function updateConnectionStatus() {
 
 async function updatePendingCount() {
   const pending = await getPendingData();
-  const count = pending.length;
-  
-  document.getElementById('pendingCount').textContent = count;
+  document.getElementById('pendingCount').textContent = pending.length;
   document.getElementById('viewPending').style.display =
-    count > 0 ? 'flex' : 'none';
+    pending.length > 0 ? 'flex' : 'none';
 }
 
 async function updateDashboard() {
@@ -742,14 +752,13 @@ async function updateDashboard() {
   const lastSync = localStorage.getItem('lastSync');
   if (lastSync) {
     const d = new Date(lastSync);
-    const formatted = d.toLocaleString('es-GT', {
+    document.getElementById('dashLastSync').textContent = d.toLocaleString('es-GT', {
       day: '2-digit',
       month: '2-digit',
       year: '2-digit',
       hour: '2-digit',
       minute: '2-digit'
     });
-    document.getElementById('dashLastSync').textContent = formatted;
   } else {
     document.getElementById('dashLastSync').textContent = '—';
   }
@@ -784,8 +793,7 @@ async function showPendingModal() {
   list.innerHTML = '';
 
   if (pending.length === 0) {
-    list.innerHTML =
-      '<p style="text-align:center;color:#7f8c8d;">No hay datos pendientes</p>';
+    list.innerHTML = '<p style="text-align:center;color:#7f8c8d;">No hay datos pendientes</p>';
   } else {
     pending.forEach(item => {
       const el = document.createElement('div');
@@ -799,7 +807,6 @@ async function showPendingModal() {
           <div><strong>Fecha:</strong> ${item.fecha}</div>
           <div><strong>Doc:</strong> ${item.docNo || 'N/A'}</div>
           <div><strong>Solicitante:</strong> ${item.solicitante}</div>
-          <div class="text-xs text-gray-400 mt-1">⏳ Esperando sincronización</div>
         </div>
       `;
       list.appendChild(el);
@@ -816,12 +823,12 @@ function closePendingModal() {
 function handleOnline() {
   isOnline = true;
   updateConnectionStatus();
-  showNotification('🌐 Conexión restaurada. Sincronizando...');
+  showNotification('🌐 Conexión restaurada');
   syncPendingData();
 }
 
 function handleOffline() {
   isOnline = false;
   updateConnectionStatus();
-  showNotification('📡 Sin conexión. Los datos se guardarán localmente.');
+  showNotification('📡 Sin conexión');
 }
