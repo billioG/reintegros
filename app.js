@@ -3,7 +3,8 @@
 // ============================================
 
 const SPREADSHEET_ID = '19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78';
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3L9bCM4alugbNwpwnq9jY2YE_FRUBJGA8D3NH816XHjItLmagmqXj0v_gBJBfW90u/exec'; // LO CONFIGURAREMOS MÁS ADELANTE
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3L9bCM4alugbNwpwnq9jY2YE_FRUBJGA8D3NH816XHjItLmagmqXj0v_gBJBfW90u/exec';
+
 const DB_NAME = 'ReintegrosDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'pending_invoices';
@@ -17,47 +18,40 @@ let isOnline = navigator.onLine;
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    initializeApp();
+  initializeApp();
 });
 
 async function initializeApp() {
-    // Registrar Service Worker
-    if ('serviceWorker' in navigator) {
-        try {
-            const registration = await navigator.serviceWorker.register('./sw.js');
-            console.log('Service Worker registrado:', registration);
-        } catch (error) {
-            console.error('Error registrando Service Worker:', error);
-            // Continuar aunque falle el SW
-        }
-    }
-
-    // Inicializar IndexedDB
+  // Registrar Service Worker
+  if ('serviceWorker' in navigator) {
     try {
-        await initDB();
-    } catch (error) {
-        console.error('Error inicializando DB:', error);
-        alert('Error inicializando base de datos local');
-        return;
+      const reg = await navigator.serviceWorker.register('./sw.js');
+      console.log('Service Worker registrado:', reg.scope);
+    } catch (err) {
+      console.error('Error registrando Service Worker:', err);
     }
+  }
 
-    // Configurar event listeners
-    setupEventListeners();
+  // Inicializar IndexedDB
+  try {
+    await initDB();
+  } catch (err) {
+    console.error('Error inicializando DB:', err);
+    alert('Error inicializando base de datos local');
+    return;
+  }
 
-    // Actualizar UI
-    updateConnectionStatus();
-    await updatePendingCount();
+  setupEventListeners();
+  updateConnectionStatus();
+  await updatePendingCount();
+  await updateDashboard();
 
-    // Escuchar cambios de conexión
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
 
-    // Intentar sincronizar al inicio si hay conexión
-    if (isOnline) {
-        setTimeout(() => {
-            syncPendingData();
-        }, 1000);
-    }
+  if (isOnline) {
+    setTimeout(() => syncPendingData(), 1000);
+  }
 }
 
 // ============================================
@@ -65,93 +59,89 @@ async function initializeApp() {
 // ============================================
 
 function initDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => {
-            db = request.result;
-            resolve(db);
-        };
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
 
-        request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-                const objectStore = db.createObjectStore(STORE_NAME, { 
-                    keyPath: 'id', 
-                    autoIncrement: true 
-                });
-                objectStore.createIndex('timestamp', 'timestamp', { unique: false });
-                objectStore.createIndex('synced', 'synced', { unique: false });
-            }
-        };
-    });
+    request.onupgradeneeded = event => {
+      const dbUpgrade = event.target.result;
+      if (!dbUpgrade.objectStoreNames.contains(STORE_NAME)) {
+        const store = dbUpgrade.createObjectStore(STORE_NAME, {
+          keyPath: 'id',
+          autoIncrement: true
+        });
+        store.createIndex('timestamp', 'timestamp', { unique: false });
+        store.createIndex('synced', 'synced', { unique: false });
+      }
+    };
+  });
 }
 
-async function saveToIndexedDB(data) {
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const objectStore = transaction.objectStore(STORE_NAME);
-        
-        const dataWithTimestamp = {
-            ...data,
-            timestamp: Date.now(),
-            synced: false
-        };
-
-        const request = objectStore.add(dataWithTimestamp);
-
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
+function saveToIndexedDB(data) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_NAME], 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const payload = {
+      ...data,
+      timestamp: Date.now(),
+      synced: false
+    };
+    const req = store.add(payload);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
 }
 
-async function getPendingData() {
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction([STORE_NAME], 'readonly');
-        const objectStore = transaction.objectStore(STORE_NAME);
-        const request = objectStore.getAll();
-
-        request.onsuccess = () => {
-            // Filtrar solo los no sincronizados
-            const allData = request.result;
-            const pending = allData.filter(item => !item.synced);
-            resolve(pending);
-        };
-        request.onerror = () => reject(request.error);
-    });
+function getAllData() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_NAME], 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
 }
 
-
-async function markAsSynced(id) {
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const objectStore = transaction.objectStore(STORE_NAME);
-        const request = objectStore.get(id);
-
-        request.onsuccess = () => {
-            const data = request.result;
-            data.synced = true;
-            data.syncedAt = Date.now();
-            
-            const updateRequest = objectStore.put(data);
-            updateRequest.onsuccess = () => resolve();
-            updateRequest.onerror = () => reject(updateRequest.error);
-        };
-
-        request.onerror = () => reject(request.error);
-    });
+function getPendingData() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_NAME], 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.getAll();
+    req.onsuccess = () => {
+      const all = req.result || [];
+      const pending = all.filter(item => !item.synced);
+      resolve(pending);
+    };
+    req.onerror = () => reject(req.error);
+  });
 }
 
-async function getAllData() {
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction([STORE_NAME], 'readonly');
-        const objectStore = transaction.objectStore(STORE_NAME);
-        const request = objectStore.getAll();
+function markAsSynced(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_NAME], 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.get(id);
 
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
+    req.onsuccess = () => {
+      const data = req.result;
+      if (!data) {
+        resolve();
+        return;
+      }
+      data.synced = true;
+      data.syncedAt = Date.now();
+      const updateReq = store.put(data);
+      updateReq.onsuccess = () => resolve();
+      updateReq.onerror = () => reject(updateReq.error);
+    };
+
+    req.onerror = () => reject(req.error);
+  });
 }
 
 // ============================================
@@ -159,95 +149,66 @@ async function getAllData() {
 // ============================================
 
 function setupEventListeners() {
-    // Botón abrir cámara
-    document.getElementById('openCamera').addEventListener('click', openCamera);
-
-    // Input de cámara
-    document.getElementById('cameraInput').addEventListener('change', handleImageCapture);
-
-    // Cerrar vista previa
-    document.getElementById('closePreview').addEventListener('click', closePreview);
-
-    // Select de proyecto
-    document.getElementById('proyecto').addEventListener('change', handleProyectoChange);
-
-    // Cancelar formulario
-    document.getElementById('cancelForm').addEventListener('click', resetForm);
-
-    // Submit formulario
-    document.getElementById('dataForm').addEventListener('submit', handleFormSubmit);
-
-    // Ver datos pendientes
-    document.getElementById('viewPending').addEventListener('click', showPendingModal);
-
-    // Cerrar modal
-    document.getElementById('closePendingModal').addEventListener('click', closePendingModal);
-
-    // Sincronizar todo
-    document.getElementById('syncAll').addEventListener('click', syncPendingData);
+  document.getElementById('openCamera').addEventListener('click', openCamera);
+  document.getElementById('cameraInput').addEventListener('change', handleImageCapture);
+  document.getElementById('closePreview').addEventListener('click', closePreview);
+  document.getElementById('proyecto').addEventListener('change', handleProyectoChange);
+  document.getElementById('cancelForm').addEventListener('click', resetForm);
+  document.getElementById('dataForm').addEventListener('submit', handleFormSubmit);
+  document.getElementById('viewPending').addEventListener('click', showPendingModal);
+  document.getElementById('closePendingModal').addEventListener('click', closePendingModal);
+  document.getElementById('syncAll').addEventListener('click', () => syncPendingData(true));
+  document.getElementById('btnSyncNow').addEventListener('click', () => syncPendingData(true));
 }
 
 // ============================================
-// MANEJO DE CÁMARA Y CAPTURA
+// CÁMARA Y OCR
 // ============================================
 
 function openCamera() {
-    document.getElementById('cameraInput').click();
+  document.getElementById('cameraInput').click();
 }
 
-async function handleImageCapture(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+function handleImageCapture(e) {
+  const file = e.target.files[0];
+  if (!file) return;
 
-    // Mostrar vista previa
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        currentImageData = e.target.result;
-        
-        const previewImage = document.getElementById('previewImage');
-        previewImage.src = currentImageData;
-        
-        document.getElementById('imagePreview').style.display = 'block';
-        document.querySelector('.capture-section').style.display = 'none';
-        document.getElementById('ocrStatus').style.display = 'flex';
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    currentImageData = ev.target.result;
+    const img = document.getElementById('previewImage');
+    img.src = currentImageData;
 
-        // Procesar OCR
-        await processOCR(file);
-    };
+    document.getElementById('imagePreview').style.display = 'block';
+    document.querySelector('.capture-section').style.display = 'none';
+    document.getElementById('ocrStatus').style.display = 'flex';
 
-    reader.readAsDataURL(file);
+    await processOCR(file);
+  };
+  reader.readAsDataURL(file);
 }
 
 async function processOCR(imageFile) {
-    try {
-        const { data: { text } } = await Tesseract.recognize(
-            imageFile,
-            'spa',
-            {
-                logger: m => console.log(m)
-            }
-        );
+  try {
+    // Tesseract v1 vía CDN (no hace falta configurar worker) [web:38]
+    const result = await Tesseract.recognize(imageFile);
+    const text = result.text || '';
+    console.log('Texto OCR:', text);
 
-        console.log('Texto extraído:', text);
+    const extracted = extractInvoiceData(text);
+    fillForm(extracted);
 
-        // Extraer información
-        const extractedData = extractInvoiceData(text);
-        
-        // Llenar formulario
-        fillForm(extractedData);
-
-        // Ocultar OCR status y mostrar formulario
-        document.getElementById('ocrStatus').style.display = 'none';
-        document.getElementById('dataForm').style.display = 'block';
-
-    } catch (error) {
-        console.error('Error en OCR:', error);
-        document.getElementById('ocrStatus').innerHTML = '<span>❌ Error al extraer datos. Complete manualmente.</span>';
-        setTimeout(() => {
-            document.getElementById('ocrStatus').style.display = 'none';
-            document.getElementById('dataForm').style.display = 'block';
-        }, 2000);
-    }
+    document.getElementById('ocrStatus').style.display = 'none';
+    document.getElementById('dataForm').style.display = 'block';
+  } catch (error) {
+    console.error('Error en OCR:', error);
+    document.getElementById('ocrStatus').innerHTML =
+      '<span>❌ Error al extraer datos. Complete manualmente.</span>';
+    setTimeout(() => {
+      document.getElementById('ocrStatus').style.display = 'none';
+      document.getElementById('dataForm').style.display = 'block';
+    }, 2000);
+  }
 }
 
 // ============================================
@@ -255,330 +216,345 @@ async function processOCR(imageFile) {
 // ============================================
 
 function extractInvoiceData(text) {
-    const data = {
-        fecha: '',
-        docNo: '',
-        valor: ''
-    };
+  const data = { fecha: '', docNo: '', valor: '' };
 
-    // Extraer fecha (varios formatos)
-    const fechaPatterns = [
-        /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/,
-        /(\d{2,4})[\/\-](\d{1,2})[\/\-](\d{1,2})/,
-        /fecha[:\s]+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/i
-    ];
-
-    for (const pattern of fechaPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-            const [_, p1, p2, p3] = match;
-            // Intentar determinar formato
-            let year = p3.length === 2 ? '20' + p3 : p3;
-            let month = p2.length <= 2 && parseInt(p2) <= 12 ? p2.padStart(2, '0') : p1.padStart(2, '0');
-            let day = p2.length <= 2 && parseInt(p2) <= 12 ? p1.padStart(2, '0') : p2.padStart(2, '0');
-            
-            data.fecha = `${year}-${month}-${day}`;
-            break;
-        }
+  // Fecha
+  const fechaPatterns = [
+    /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/,
+    /(\d{2,4})[\/\-](\d{1,2})[\/\-](\d{1,2})/,
+    /fecha[:\s]+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/i
+  ];
+  for (const p of fechaPatterns) {
+    const m = text.match(p);
+    if (m) {
+      const [_, a, b, c] = m;
+      let year = c.length === 2 ? '20' + c : c;
+      let month, day;
+      if (parseInt(b, 10) <= 12) {
+        day = a.padStart(2, '0');
+        month = b.padStart(2, '0');
+      } else {
+        day = b.padStart(2, '0');
+        month = a.padStart(2, '0');
+      }
+      data.fecha = `${year}-${month}-${day}`;
+      break;
     }
+  }
 
-    // Extraer número de documento
-    const docPatterns = [
-        /(?:DTE|Documento|Doc\.?|Factura|N[uú]mero)[:\s]+([A-Z0-9\-]+)/i,
-        /([A-Z0-9]{8}-[A-Z0-9]{10})/,
-        /DTE[:\s]*([0-9\-]+)/i
-    ];
-
-    for (const pattern of docPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-            data.docNo = match[1].trim();
-            break;
-        }
+  // Doc No
+  const docPatterns = [
+    /(?:DTE|Documento|Doc\.?|Factura|N[uú]mero)[:\s]+([A-Z0-9\-]+)/i,
+    /([A-Z0-9]{8}-[A-Z0-9]{10})/,
+    /DTE[:\s]*([0-9\-]+)/i
+  ];
+  for (const p of docPatterns) {
+    const m = text.match(p);
+    if (m) {
+      data.docNo = m[1].trim();
+      break;
     }
+  }
 
-    // Extraer total/valor
-    const valorPatterns = [
-        /(?:total|monto|valor)[:\s]*Q?[:\s]*(\d+[,.]?\d*)/i,
-        /Q[:\s]*(\d+[,.]?\d+)/,
-        /(\d+\.\d{2})\s*$/m
-    ];
-
-    for (const pattern of valorPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-            data.valor = match[1].replace(',', '.');
-            break;
-        }
+  // Valor
+  const valorPatterns = [
+    /(?:total|monto|valor)[:\s]*Q?[:\s]*(\d+[.,]?\d*)/i,
+    /Q[:\s]*(\d+[.,]?\d+)/,
+    /(\d+\.\d{2})\s*$/m
+  ];
+  for (const p of valorPatterns) {
+    const m = text.match(p);
+    if (m) {
+      data.valor = m[1].replace(',', '.');
+      break;
     }
+  }
 
-    return data;
+  return data;
 }
 
 function fillForm(data) {
-    if (data.fecha) {
-        document.getElementById('fecha').value = data.fecha;
-    } else {
-        // Fecha actual como fallback
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('fecha').value = today;
-    }
+  const fechaInput = document.getElementById('fecha');
+  const docInput = document.getElementById('docNo');
+  const valorInput = document.getElementById('valor');
 
-    if (data.docNo) {
-        document.getElementById('docNo').value = data.docNo;
-    }
-
-    if (data.valor) {
-        document.getElementById('valor').value = data.valor;
-    }
+  if (data.fecha) {
+    fechaInput.value = data.fecha;
+  } else {
+    const today = new Date().toISOString().split('T')[0];
+    fechaInput.value = today;
+  }
+  if (data.docNo) docInput.value = data.docNo;
+  if (data.valor) valorInput.value = data.valor;
 }
 
 // ============================================
-// MANEJO DE FORMULARIO
+// FORMULARIO
 // ============================================
 
-function handleProyectoChange(event) {
-    const otroGroup = document.getElementById('otroProyectoGroup');
-    if (event.target.value === 'otro') {
-        otroGroup.style.display = 'block';
-        document.getElementById('otroProyecto').required = true;
-    } else {
-        otroGroup.style.display = 'none';
-        document.getElementById('otroProyecto').required = false;
-    }
+function handleProyectoChange(e) {
+  const otroGroup = document.getElementById('otroProyectoGroup');
+  const otroInput = document.getElementById('otroProyecto');
+  if (e.target.value === 'otro') {
+    otroGroup.style.display = 'block';
+    otroInput.required = true;
+  } else {
+    otroGroup.style.display = 'none';
+    otroInput.required = false;
+  }
 }
 
-async function handleFormSubmit(event) {
-    event.preventDefault();
+async function handleFormSubmit(e) {
+  e.preventDefault();
 
-    const formData = {
-        fecha: document.getElementById('fecha').value,
-        descripcion: document.getElementById('descripcion').value,
-        docNo: document.getElementById('docNo').value,
-        proyecto: document.getElementById('proyecto').value === 'otro' 
-            ? document.getElementById('otroProyecto').value 
-            : document.getElementById('proyecto').value,
-        valor: document.getElementById('valor').value,
-        solicitante: document.getElementById('solicitante').value,
-        foto: currentImageData
-    };
+  const proyectoSelect = document.getElementById('proyecto');
+  const proyecto =
+    proyectoSelect.value === 'otro'
+      ? document.getElementById('otroProyecto').value
+      : proyectoSelect.value;
 
-    try {
-        // Guardar en IndexedDB
-        await saveToIndexedDB(formData);
-        
-        // Actualizar contador
-        await updatePendingCount();
+  const formData = {
+    fecha: document.getElementById('fecha').value,
+    descripcion: document.getElementById('descripcion').value,
+    docNo: document.getElementById('docNo').value,
+    proyecto,
+    valor: document.getElementById('valor').value,
+    solicitante: document.getElementById('solicitante').value,
+    foto: currentImageData
+  };
 
-        // Mostrar notificación
-        showNotification('✅ Datos guardados localmente');
+  try {
+    await saveToIndexedDB(formData);
+    await updatePendingCount();
+    await updateDashboard();
+    showNotification('✅ Datos guardados localmente');
 
-        // Intentar sincronizar si hay conexión
-        if (isOnline) {
-            await syncPendingData();
-        }
-
-        // Resetear formulario
-        resetForm();
-
-    } catch (error) {
-        console.error('Error guardando datos:', error);
-        showNotification('❌ Error al guardar datos');
+    if (isOnline) {
+      await syncPendingData();
     }
+
+    resetForm();
+  } catch (err) {
+    console.error('Error guardando datos:', err);
+    showNotification('❌ Error al guardar datos');
+  }
 }
 
 function resetForm() {
-    document.getElementById('dataForm').reset();
-    document.getElementById('dataForm').style.display = 'none';
-    document.getElementById('imagePreview').style.display = 'none';
-    document.querySelector('.capture-section').style.display = 'block';
-    currentImageData = null;
+  document.getElementById('dataForm').reset();
+  document.getElementById('dataForm').style.display = 'none';
+  document.getElementById('imagePreview').style.display = 'none';
+  document.querySelector('.capture-section').style.display = 'block';
+  document.getElementById('ocrStatus').style.display = 'flex';
+  document.getElementById('ocrStatus').innerHTML =
+    '<div class="spinner"></div><span>Extrayendo datos...</span>';
+  currentImageData = null;
 }
 
 function closePreview() {
-    if (confirm('¿Descartar esta imagen?')) {
-        resetForm();
-    }
+  if (confirm('¿Descartar esta imagen?')) {
+    resetForm();
+  }
 }
 
 // ============================================
-// SINCRONIZACIÓN CON GOOGLE SHEETS
+// SINCRONIZACIÓN CON APPS SCRIPT
 // ============================================
-
-async function syncPendingData() {
-    if (!isOnline) {
-        showNotification('⚠️ Sin conexión a internet');
-        return;
-    }
-
-    const pendingData = await getPendingData();
-    
-    if (pendingData.length === 0) {
-        console.log('No hay datos pendientes');
-        return;
-    }
-
-    showSyncNotification();
-
-    for (const item of pendingData) {
-        try {
-            // Subir imagen a Google Drive
-            const fotoUrl = await uploadToGoogleDrive(item.foto, `factura_${item.timestamp}.jpg`);
-            
-            // Guardar en Google Sheets
-            await saveToGoogleSheets({
-                fecha: item.fecha,
-                descripcion: item.descripcion,
-                docNo: item.docNo,
-                proyecto: item.proyecto,
-                valor: item.valor,
-                solicitante: item.solicitante,
-                foto: fotoUrl
-            });
-
-            // Marcar como sincronizado
-            await markAsSynced(item.id);
-            
-        } catch (error) {
-            console.error('Error sincronizando:', error);
-        }
-    }
-
-    hideSyncNotification();
-    await updatePendingCount();
-    showNotification('✅ Datos sincronizados correctamente');
-}
 
 async function uploadToGoogleDrive(base64Image, filename) {
-    // Esta función necesita el Apps Script desplegado
-    // Por ahora retornamos la imagen en base64 como placeholder
-    
-    if (!APPS_SCRIPT_URL) {
-        console.warn('Apps Script URL no configurada');
-        return base64Image; // Fallback: guardar base64 directamente
-    }
+  if (!APPS_SCRIPT_URL) {
+    console.warn('Apps Script URL no configurada');
+    return base64Image;
+  }
 
-    const response = await fetch(APPS_SCRIPT_URL + '?action=uploadImage', {
-        method: 'POST',
-        body: JSON.stringify({
-            imageData: base64Image,
-            filename: filename
-        })
-    });
+  const resp = await fetch(APPS_SCRIPT_URL + '?action=uploadImage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      imageData: base64Image,
+      filename
+    })
+  });
 
-    const result = await response.json();
-    return result.url;
+  const result = await resp.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Error al subir imagen');
+  }
+  return result.url;
 }
 
 async function saveToGoogleSheets(data) {
-    if (!APPS_SCRIPT_URL) {
-        console.warn('Apps Script URL no configurada');
-        return;
+  if (!APPS_SCRIPT_URL) return;
+
+  const resp = await fetch(APPS_SCRIPT_URL + '?action=addRow', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+
+  const result = await resp.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Error al guardar en Sheets');
+  }
+}
+
+async function syncPendingData(forceMessage = false) {
+  if (!isOnline) {
+    showNotification('⚠️ Sin conexión a internet');
+    return;
+  }
+
+  const pending = await getPendingData();
+  if (pending.length === 0) {
+    if (forceMessage) showNotification('No hay datos pendientes para sincronizar');
+    return;
+  }
+
+  showSyncNotification();
+
+  for (const item of pending) {
+    try {
+      const fotoUrl = await uploadToGoogleDrive(
+        item.foto,
+        `factura_${item.timestamp}.jpg`
+      );
+
+      await saveToGoogleSheets({
+        fecha: item.fecha,
+        descripcion: item.descripcion,
+        docNo: item.docNo,
+        proyecto: item.proyecto,
+        valor: item.valor,
+        solicitante: item.solicitante,
+        foto: fotoUrl
+      });
+
+      await markAsSynced(item.id);
+    } catch (err) {
+      console.error('Error sincronizando item:', err);
+      // se continúa con los demás
     }
+  }
 
-    const response = await fetch(APPS_SCRIPT_URL + '?action=addRow', {
-        method: 'POST',
-        body: JSON.stringify(data)
-    });
-
-    return await response.json();
+  hideSyncNotification();
+  await updatePendingCount();
+  await updateDashboard();
+  showNotification('✅ Datos sincronizados correctamente');
+  localStorage.setItem('lastSync', new Date().toISOString());
 }
 
 // ============================================
-// UI Y NOTIFICACIONES
+// UI / DASHBOARD / ESTADO
 // ============================================
 
 function updateConnectionStatus() {
-    const indicator = document.getElementById('statusIndicator');
-    const text = document.getElementById('statusText');
-    
-    if (isOnline) {
-        indicator.classList.remove('offline');
-        text.textContent = 'Conectado';
-    } else {
-        indicator.classList.add('offline');
-        text.textContent = 'Sin conexión';
-    }
+  const indicator = document.getElementById('statusIndicator');
+  const text = document.getElementById('statusText');
+  if (isOnline) {
+    indicator.classList.remove('offline');
+    text.textContent = 'Conectado';
+  } else {
+    indicator.classList.add('offline');
+    text.textContent = 'Sin conexión';
+  }
 }
 
 async function updatePendingCount() {
-    const pendingData = await getPendingData();
-    const count = pendingData.length;
-    
-    document.getElementById('pendingCount').textContent = count;
-    
-    if (count > 0) {
-        document.getElementById('viewPending').style.display = 'flex';
-    } else {
-        document.getElementById('viewPending').style.display = 'none';
-    }
+  const pending = await getPendingData();
+  const all = await getAllData();
 
-    // Actualizar contador total
-    const allData = await getAllData();
-    document.getElementById('savedCount').textContent = allData.length;
+  const count = pending.length;
+  document.getElementById('pendingCount').textContent = count;
+  document.getElementById('savedCount').textContent = all.length;
+
+  document.getElementById('viewPending').style.display =
+    count > 0 ? 'flex' : 'none';
+}
+
+async function updateDashboard() {
+  const all = await getAllData();
+  const pending = all.filter(i => !i.synced).length;
+  const synced = all.filter(i => i.synced).length;
+
+  document.getElementById('dashPending').textContent = pending;
+  document.getElementById('dashSynced').textContent = synced;
+
+  const lastSync = localStorage.getItem('lastSync');
+  if (lastSync) {
+    const d = new Date(lastSync);
+    const formatted = d.toLocaleString('es-GT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    document.getElementById('dashLastSync').textContent = formatted;
+  } else {
+    document.getElementById('dashLastSync').textContent = '—';
+  }
 }
 
 function showNotification(message) {
-    // Crear notificación temporal
-    const notification = document.createElement('div');
-    notification.className = 'sync-notification show';
-    notification.textContent = message;
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-        notification.remove();
-    }, 3000);
+  const bar = document.createElement('div');
+  bar.className = 'sync-notification show';
+  bar.textContent = message;
+  document.body.appendChild(bar);
+  setTimeout(() => bar.remove(), 3000);
 }
 
 function showSyncNotification() {
-    document.getElementById('syncNotification').classList.add('show');
+  document.getElementById('syncNotification').classList.add('show');
 }
 
 function hideSyncNotification() {
-    document.getElementById('syncNotification').classList.remove('show');
+  document.getElementById('syncNotification').classList.remove('show');
 }
 
+// Modal pendientes
 async function showPendingModal() {
-    const pendingData = await getPendingData();
-    const listContainer = document.getElementById('pendingList');
-    
-    listContainer.innerHTML = '';
+  const list = document.getElementById('pendingList');
+  const pending = await getPendingData();
 
-    if (pendingData.length === 0) {
-        listContainer.innerHTML = '<p style="text-align: center; color: #7f8c8d;">No hay datos pendientes</p>';
-    } else {
-        pendingData.forEach(item => {
-            const itemEl = document.createElement('div');
-            itemEl.className = 'pending-item';
-            itemEl.innerHTML = `
-                <div class="pending-item-header">
-                    <span>${item.proyecto}</span>
-                    <span>Q ${item.valor}</span>
-                </div>
-                <div class="pending-item-details">
-                    <div><strong>Fecha:</strong> ${item.fecha}</div>
-                    <div><strong>Doc:</strong> ${item.docNo || 'N/A'}</div>
-                    <div><strong>Solicitante:</strong> ${item.solicitante}</div>
-                </div>
-            `;
-            listContainer.appendChild(itemEl);
-        });
-    }
+  list.innerHTML = '';
 
-    document.getElementById('pendingModal').style.display = 'flex';
+  if (pending.length === 0) {
+    list.innerHTML =
+      '<p style="text-align:center;color:#7f8c8d;">No hay datos pendientes</p>';
+  } else {
+    pending.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'pending-item';
+      el.innerHTML = `
+        <div class="pending-item-header">
+          <span>${item.proyecto}</span>
+          <span>Q ${item.valor}</span>
+        </div>
+        <div class="pending-item-details">
+          <div><strong>Fecha:</strong> ${item.fecha}</div>
+          <div><strong>Doc:</strong> ${item.docNo || 'N/A'}</div>
+          <div><strong>Solicitante:</strong> ${item.solicitante}</div>
+        </div>
+      `;
+      list.appendChild(el);
+    });
+  }
+
+  document.getElementById('pendingModal').style.display = 'flex';
 }
 
 function closePendingModal() {
-    document.getElementById('pendingModal').style.display = 'none';
+  document.getElementById('pendingModal').style.display = 'none';
 }
 
+// Eventos online/offline
 function handleOnline() {
-    isOnline = true;
-    updateConnectionStatus();
-    syncPendingData();
+  isOnline = true;
+  updateConnectionStatus();
+  syncPendingData();
 }
 
 function handleOffline() {
-    isOnline = false;
-    updateConnectionStatus();
+  isOnline = false;
+  updateConnectionStatus();
 }
