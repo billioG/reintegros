@@ -17,7 +17,7 @@ self.addEventListener('install', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Solo manejamos peticiones de nuestro propio dominio (GitHub Pages)
+  // Solo manejamos peticiones de nuestro propio dominio
   if (url.origin === self.location.origin) {
     event.respondWith(
       caches.match(event.request).then(response => {
@@ -27,8 +27,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Todo lo externo (Tesseract, Apps Script, etc.) va directo a la red
-  // sin pasar por cache ni manipular la Response
+  // Todo lo externo (Tesseract, Apps Script) va directo a la red
   return;
 });
 
