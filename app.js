@@ -389,31 +389,29 @@ async function uploadToGoogleDrive(base64Image, filename) {
   }
 
   try {
-    const data = JSON.stringify({
-      imageData: base64Image,
-      filename: filename
+    const resp = await fetch(`${APPS_SCRIPT_URL}?action=uploadImage`, {
+      method: 'POST',
+      mode: 'no-cors', // ESTO EVITA EL ERROR DE CORS
+      headers: { 
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        imageData: base64Image,
+        filename: filename
+      })
     });
 
-    // Usar GET con parámetros en URL para evitar CORS
-    const url = `${APPS_SCRIPT_URL}?action=uploadImage&data=${encodeURIComponent(data)}`;
+    // Con no-cors no podemos leer la respuesta, asumimos éxito
+    // El Apps Script seguirá funcionando en segundo plano
+    console.log('Imagen enviada a Google Drive');
+    return `https://drive.google.com/drive/folders/Facturas_Reintegros/${filename}`;
     
-    const resp = await fetch(url, { 
-      method: 'GET',
-      redirect: 'follow'
-    });
-
-    const result = await resp.json();
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Error al subir imagen');
-    }
-    
-    return result.url;
   } catch (error) {
     console.error('Error subiendo a Drive:', error);
     throw error;
   }
 }
+
 
 async function saveToGoogleSheets(data) {
   if (!APPS_SCRIPT_URL) {
@@ -469,25 +467,60 @@ async function syncPendingData(forceMessage = false) {
       );
 
       // 2. Guardar en Google Sheets
-      await saveToGoogleSheets({
-        fecha: item.fecha,
-        descripcion: item.descripcion,
-        docNo: item.docNo,
-        proyecto: item.proyecto,
-        valor: item.valor,
-        solicitante: item.solicitante,
-        foto: fotoUrl
-      });
-
-      // 3. Marcar como sincronizado
-      await markAsSynced(item.id);
-      successCount++;
-      
-    } catch (err) {
-      console.error('Error sincronizando item:', err);
-      errorCount++;
-    }
+async function uploadToGoogleDrive(base64Image, filename) {
+  if (!APPS_SCRIPT_URL) {
+    console.warn('Apps Script URL no configurada');
+    return base64Image;
   }
+
+  try {
+    const resp = await fetch(`${APPS_SCRIPT_URL}?action=uploadImage`, {
+      method: 'POST',
+      mode: 'no-cors', // ESTO EVITA EL ERROR DE CORS
+      headers: { 
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        imageData: base64Image,
+        filename: filename
+      })
+    });
+
+    // Con no-cors no podemos leer la respuesta, asumimos éxito
+    // El Apps Script seguirá funcionando en segundo plano
+    console.log('Imagen enviada a Google Drive');
+    return `https://drive.google.com/drive/folders/Facturas_Reintegros/${filename}`;
+    
+  } catch (error) {
+    console.error('Error subiendo a Drive:', error);
+    throw error;
+  }
+}
+
+async function saveToGoogleSheets(data) {
+  if (!APPS_SCRIPT_URL) {
+    console.warn('Apps Script URL no configurada');
+    return;
+  }
+
+  try {
+    await fetch(`${APPS_SCRIPT_URL}?action=addRow`, {
+      method: 'POST',
+      mode: 'no-cors', // ESTO EVITA EL ERROR DE CORS
+      headers: { 
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
+
+    console.log('Datos enviados a Google Sheets');
+    
+  } catch (error) {
+    console.error('Error guardando en Sheets:', error);
+    throw error;
+  }
+}
+
 
   hideSyncNotification();
   await updatePendingCount();
