@@ -1,66 +1,44 @@
-const CACHE_NAME = 'reintegros-v1';
-const urlsToCache = [
-    './',
-    './index.html',
-    './styles.css',
-    './app.js',
-    './manifest.json'
+const CACHE_NAME = 'reintegros-v3';
+const APP_SHELL = [
+  './',
+  './index.html',
+  './styles.css',
+  './app.js',
+  './manifest.json'
 ];
 
 self.addEventListener('install', event => {
-    console.log('Service Worker instalando...');
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => {
-                console.log('Cache abierto');
-                return cache.addAll(urlsToCache);
-            })
-            .catch(error => {
-                console.error('Error al cachear:', error);
-            })
-    );
-    self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL))
+  );
+  self.skipWaiting();
 });
 
 self.addEventListener('fetch', event => {
-    // Solo cachear peticiones GET
-    if (event.request.method !== 'GET') return;
-    
-    // No cachear peticiones a APIs externas
-    if (event.request.url.includes('googleapis.com') || 
-        event.request.url.includes('script.google.com')) {
-        return;
-    }
+  const url = new URL(event.request.url);
 
+  // Solo manejamos peticiones de nuestro propio dominio (GitHub Pages)
+  if (url.origin === self.location.origin) {
     event.respondWith(
-        caches.match(event.request)
-            .then(response => {
-                if (response) {
-                    return response;
-                }
-                return fetch(event.request).catch(() => {
-                    // Si falla y es una navegación, retornar index.html
-                    if (event.request.mode === 'navigate') {
-                        return caches.match('./index.html');
-                    }
-                });
-            })
+      caches.match(event.request).then(response => {
+        return response || fetch(event.request);
+      })
     );
+    return;
+  }
+
+  // Todo lo externo (Tesseract, Apps Script, etc.) va directo a la red
+  // sin pasar por cache ni manipular la Response
+  return;
 });
 
 self.addEventListener('activate', event => {
-    console.log('Service Worker activando...');
-    event.waitUntil(
-        caches.keys().then(cacheNames => {
-            return Promise.all(
-                cacheNames.map(cacheName => {
-                    if (cacheName !== CACHE_NAME) {
-                        console.log('Eliminando cache antigua:', cacheName);
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        })
-    );
-    return self.clients.claim();
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
+        keys.map(k => (k !== CACHE_NAME ? caches.delete(k) : null))
+      )
+    )
+  );
+  self.clients.claim();
 });
