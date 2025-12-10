@@ -225,87 +225,105 @@ async function processOCR(imageFile) {
 // ============================================
 // EXTRACCIÓN DE DATOS OPTIMIZADA
 // ============================================
-
 function extractInvoiceData(text) {
   const data = { fecha: '', docNo: '', valor: '' };
   const cleanText = text.replace(/[\r\n]+/g, '\n');
-  const lines = cleanText.split('\n');
+  const lines = cleanText.split('\n').map(l => l.trim());
 
   console.log('=== EXTRAYENDO DATOS ===');
-  console.log('Texto limpio:', cleanText);
+  console.log('Total de líneas:', lines.length);
 
-  // 1. EXTRAER NÚMERO DE FACTURA/DTE
+  // 1. EXTRAER NÚMERO DE AUTORIZACIÓN (NO. AUTORIZACIÓN)
   let dteFound = '';
   
-  // Patrones específicos para tus facturas
-  const dtePatterns = [
-    // "Numero de DTE: 12345678" o "NUMERO: 12345678"
-    /(?:Numero\s+de\s+DTE|NUMERO|DTE\s+No\.?|Factura)[:\s]*(\d{8,15})/i,
-    
-    // "FACTURA" seguido de UUID en línea siguiente: "XXXXXXXX-XXXXXXXXX"
-    /([A-F0-9]{8}-[A-F0-9]{8,})/i,
-    
-    // Solo números largos (8-15 dígitos)
-    /\b(\d{8,15})\b/
-  ];
-
-  // Primero buscar por palabras clave
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const line = lines[i];
     
-    // Si encontramos "FACTURA" buscar UUID en línea siguiente
-    if (/^FACTURA$/i.test(line) && i + 1 < lines.length) {
-      const nextLine = lines[i + 1].trim();
-      const uuidMatch = nextLine.match(/([A-F0-9]{8}-[A-F0-9]{8,})/i);
-      if (uuidMatch) {
-        dteFound = uuidMatch[1];
-        console.log('✓ DTE encontrado después de FACTURA:', dteFound);
-        break;
+    // Buscar "NO. AUTORIZACIÓN:" seguido del número
+    if (/NO\.?\s*AUTORIZACI[OÓ]N/i.test(line)) {
+      console.log('✓ Línea con NO. AUTORIZACIÓN encontrada:', line);
+      
+      // El número puede estar en la misma línea o en las siguientes
+      // Formato: B4681B5E-3614-4ADD-9CCC-E0F5/131 o similar
+      for (let j = i; j < Math.min(i + 3, lines.length); j++) {
+        const checkLine = lines[j];
+        
+        // Buscar UUID formato: XXXXXXXX-XXXX-XXXX-XXXX-XXXX/XXX
+        const uuidMatch = checkLine.match(/([A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]+(?:\/\d+)?)/i);
+        if (uuidMatch) {
+          dteFound = uuidMatch[1];
+          console.log('✓ UUID encontrado:', dteFound);
+          break;
+        }
+      }
+      
+      if (dteFound) break;
+    }
+    
+    // Buscar "SERIE:" seguido de código
+    if (/SERIE:/i.test(line)) {
+      const serieMatch = line.match(/SERIE:\s*([A-Z0-9\-]+)/i);
+      if (serieMatch && !dteFound) {
+        dteFound = serieMatch[1];
+        console.log('✓ SERIE encontrada:', dteFound);
       }
     }
     
-    // Buscar "Numero de DTE:", "NUMERO:", "DTE No."
-    for (const pattern of dtePatterns) {
-      const match = line.match(pattern);
-      if (match) {
-        dteFound = match[1];
-        console.log('✓ DTE encontrado con patrón:', dteFound);
-        break;
+    // Buscar "NUMERO:" con número largo
+    if (/N[UÚ]MERO:/i.test(line)) {
+      const numMatch = line.match(/N[UÚ]MERO:\s*(\d{8,})/i);
+      if (numMatch && !dteFound) {
+        dteFound = numMatch[1];
+        console.log('✓ NUMERO encontrado:', dteFound);
       }
     }
-    
-    if (dteFound) break;
   }
 
   if (dteFound) {
     data.docNo = dteFound;
   } else {
-    console.log('✗ No se encontró número de DTE/Factura');
+    console.log('✗ No se encontró número de autorización/factura');
   }
 
-  // 2. EXTRAER TOTAL
+  // 2. EXTRAER TOTAL (puede aparecer como "TOTAL Q 150.00" o "Q 150.00")
   let valorFound = '';
   
-  // Buscar "TOTAL 100.00" o "TOTAL Q100.00"
-  const totalPatterns = [
-    /TOTAL\s+Q?\s*(\d+\.?\d*)/i,
-    /Q\s*(\d+\.\d{2})/,
-    /(\d+\.\d{2})/
-  ];
-
   for (const line of lines) {
-    for (const pattern of totalPatterns) {
-      const match = line.match(pattern);
-      if (match) {
-        const valor = parseFloat(match[1]);
+    // Buscar "TOTAL" seguido de Q y número
+    if (/TOTAL/i.test(line)) {
+      const totalMatch = line.match(/Q\s*(\d+\.?\d*)/i);
+      if (totalMatch) {
+        const valor = parseFloat(totalMatch[1]);
         if (valor > 0 && !isNaN(valor)) {
           valorFound = valor.toFixed(2);
-          console.log('✓ Total encontrado:', valorFound);
+          console.log('✓ TOTAL encontrado en línea TOTAL:', valorFound, '→', line);
           break;
         }
       }
     }
-    if (valorFound) break;
+  }
+  
+  // Si no se encontró en TOTAL, buscar cualquier monto con Q
+  if (!valorFound) {
+    const allMoneyMatches = [];
+    
+    for (const line of lines) {
+      const matches = line.match(/Q\s*(\d+\.\d{2})/gi);
+      if (matches) {
+        matches.forEach(m => {
+          const num = parseFloat(m.replace(/Q\s*/i, ''));
+          if (!isNaN(num) && num > 0) {
+            allMoneyMatches.push(num);
+          }
+        });
+      }
+    }
+    
+    if (allMoneyMatches.length > 0) {
+      // Tomar el valor más grande (usualmente es el total)
+      valorFound = Math.max(...allMoneyMatches).toFixed(2);
+      console.log('✓ TOTAL encontrado (máximo):', valorFound);
+    }
   }
 
   if (valorFound) {
@@ -314,53 +332,61 @@ function extractInvoiceData(text) {
     console.log('✗ No se encontró el total');
   }
 
-  // 3. EXTRAER FECHA
-  // Buscar "FECHA DE EMISION 28/11/2025"
-  const fechaPatterns = [
-    /FECHA\s+DE\s+EMISION\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/i,
-    /FECHA[:\s]+(\d{1,2})\/(\d{1,2})\/(\d{4})/i,
-    /(\d{1,2})\/(\d{1,2})\/(\d{4})/
-  ];
-
-  for (const pattern of fechaPatterns) {
-    const match = cleanText.match(pattern);
-    if (match) {
-      const day = match[1].padStart(2, '0');
-      const month = match[2].padStart(2, '0');
-      const year = match[3];
-      data.fecha = `${year}-${month}-${day}`;
-      console.log('✓ Fecha encontrada:', data.fecha);
-      break;
+  // 3. EXTRAER FECHA (puede aparecer como "FECHA DE EMISIÓN: 22-11-2025")
+  let fechaFound = '';
+  
+  for (const line of lines) {
+    if (/FECHA\s+DE\s+EMISI[OÓ]N/i.test(line)) {
+      console.log('✓ Línea con FECHA DE EMISIÓN:', line);
+      
+      // Buscar formato: DD-MM-YYYY o DD/MM/YYYY
+      const fechaMatch = line.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+      if (fechaMatch) {
+        const day = fechaMatch[1].padStart(2, '0');
+        const month = fechaMatch[2].padStart(2, '0');
+        const year = fechaMatch[3];
+        fechaFound = `${year}-${month}-${day}`;
+        console.log('✓ Fecha encontrada:', fechaFound);
+        break;
+      }
+    }
+  }
+  
+  // Fallback: buscar cualquier fecha en formato DD-MM-YYYY o DD/MM/YYYY
+  if (!fechaFound) {
+    for (const line of lines) {
+      const fechaMatch = line.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+      if (fechaMatch) {
+        const day = fechaMatch[1].padStart(2, '0');
+        const month = fechaMatch[2].padStart(2, '0');
+        const year = fechaMatch[3];
+        
+        // Validar que sea una fecha válida
+        const monthNum = parseInt(month);
+        const dayNum = parseInt(day);
+        if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+          fechaFound = `${year}-${month}-${day}`;
+          console.log('✓ Fecha encontrada (fallback):', fechaFound);
+          break;
+        }
+      }
     }
   }
 
-  if (!data.fecha) {
+  if (fechaFound) {
+    data.fecha = fechaFound;
+  } else {
     console.log('✗ No se encontró la fecha');
   }
 
-  console.log('=== RESULTADO ===');
-  console.log('Fecha:', data.fecha || 'NO ENCONTRADA');
-  console.log('Factura/DTE:', data.docNo || 'NO ENCONTRADA');
-  console.log('Total:', data.valor || 'NO ENCONTRADO');
+  console.log('=== RESULTADO FINAL ===');
+  console.log('📅 Fecha:', data.fecha || 'NO ENCONTRADA');
+  console.log('🔢 Autorización/Factura:', data.docNo || 'NO ENCONTRADA');
+  console.log('💰 Total:', data.valor ? 'Q ' + data.valor : 'NO ENCONTRADO');
 
   return data;
 }
 
-function fillForm(data) {
-  const fechaInput = document.getElementById('fecha');
-  const docInput = document.getElementById('docNo');
-  const valorInput = document.getElementById('valor');
-
-  if (data.fecha) {
-    fechaInput.value = data.fecha;
-  } else {
-    const today = new Date().toISOString().split('T')[0];
-    fechaInput.value = today;
-  }
-  
-  if (data.docNo) docInput.value = data.docNo;
-  if (data.valor) valorInput.value = data.valor;
-}
 
 // ============================================
 // FORMULARIO
