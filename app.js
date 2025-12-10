@@ -3,7 +3,7 @@
 // ============================================
 
 const SPREADSHEET_ID = '19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78';
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz5ed5YgslwBRowLEJC_OUAclxm285kYOiINjNq5o-BunJF7rNP2cJgL4GdkxeC3aiv/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzNaCYynfL8fRTFPR31cu1QlqRj6CJ3ZxOb7u307iOUmhz4sWP7SrODpUv2n19l8UJR/exec';
 
 const DB_NAME = 'ReintegrosDB';
 const DB_VERSION = 1;
