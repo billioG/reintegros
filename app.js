@@ -3,7 +3,7 @@
 // ============================================
 
 const SPREADSHEET_ID = '19Dn2iYHZr9wrPYdNEI2t6QMLMSK-Ljshu_bpCyzgY78';
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxXIIIj2zofowHQ7P7nH5gjY7OgeJzxoDsk4SyQ3NsVejzJqTO7USnqPusV-tt4WCjl/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbygjGRZEFjwOPQhS1nuF9wyX8fHUYyUssLgeeRaJ2GVLohD8jGx7YBO4KxNUF120J53/exec'; // ACTUALIZA ESTO
 
 const DB_NAME = 'ReintegrosDB';
 const DB_VERSION = 1;
@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function initializeApp() {
-  // Registrar Service Worker
   if ('serviceWorker' in navigator) {
     try {
       const reg = await navigator.serviceWorker.register('./sw.js');
@@ -32,7 +31,6 @@ async function initializeApp() {
     }
   }
 
-  // Inicializar IndexedDB
   try {
     await initDB();
   } catch (err) {
@@ -162,7 +160,7 @@ function setupEventListeners() {
 }
 
 // ============================================
-// CÁMARA Y OCR
+// CÁMARA Y OCR MEJORADO
 // ============================================
 
 function openCamera() {
@@ -192,11 +190,16 @@ async function processOCR(imageFile) {
   try {
     console.log('Iniciando OCR...');
     
-    // Tesseract v1 por CDN
-    const result = await Tesseract.recognize(imageFile, 'spa');
+    const result = await Tesseract.recognize(imageFile, 'spa', {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          const progress = Math.round(m.progress * 100);
+          console.log(`OCR: ${progress}%`);
+        }
+      }
+    });
     
-    // En v1, result.text es directo
-    const text = result && result.text ? result.text : '';
+    const text = result && result.data && result.data.text ? result.data.text : '';
     console.log('Texto OCR extraído:', text);
 
     if (!text || text.trim() === '') {
@@ -220,21 +223,22 @@ async function processOCR(imageFile) {
 }
 
 // ============================================
-// EXTRACCIÓN DE DATOS DE FACTURA
+// EXTRACCIÓN DE DATOS MEJORADA
 // ============================================
 
 function extractInvoiceData(text) {
   const data = { fecha: '', docNo: '', valor: '' };
+  const cleanText = text.replace(/[\r\n]+/g, '\n');
+  const lines = cleanText.split('\n');
 
-  // Extraer Fecha
+  // 1. EXTRAER FECHA
   const fechaPatterns = [
     /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/,
-    /(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/,
     /fecha[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/i
   ];
   
   for (const pattern of fechaPatterns) {
-    const match = text.match(pattern);
+    const match = cleanText.match(pattern);
     if (match) {
       const [_, a, b, c] = match;
       let year = c.length === 2 ? '20' + c : c;
@@ -253,39 +257,63 @@ function extractInvoiceData(text) {
     }
   }
 
-  // Extraer Doc No
-  const docPatterns = [
-    /(?:DTE|Documento|Doc\.?|Factura|N[uú]mero|Serie)[:\s]+([A-Z0-9\-]{5,})/i,
-    /([A-Z0-9]{8}-[A-Z0-9]{8,})/,
-    /DTE[:\s]*([0-9\-]+)/i,
-    /Serie[:\s]+([A-Z0-9\-]+)/i
-  ];
-  
-  for (const pattern of docPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      data.docNo = match[1].trim();
-      break;
+  // 2. EXTRAER NÚMERO DE FACTURA/DTE (MEJORADO)
+  let dteFound = '';
+  const uuidRegex = /\b[A-F0-9]{8,}(?:-[A-F0-9]{4,})?\b/i;
+  const simpleNumRegex = /\b\d{6,15}\b/;
+  const keywordRegex = /(?:DTE\s?No\.?|N[uú]mero\s?(?:de)?\s?DTE|Factura|Serie|Documento|Doc\.?)/i;
+
+  // Buscar por palabras clave primero
+  for (let i = 0; i < lines.length; i++) {
+    if (keywordRegex.test(lines[i])) {
+      console.log('Palabra clave encontrada en línea:', lines[i]);
+      
+      // Buscar UUID o número en la misma línea
+      let match = lines[i].match(uuidRegex) || lines[i].match(simpleNumRegex);
+      
+      // Si no se encuentra, buscar en la siguiente línea
+      if (!match && i + 1 < lines.length) {
+        match = lines[i + 1].match(uuidRegex) || lines[i + 1].match(simpleNumRegex);
+      }
+      
+      if (match) {
+        dteFound = match[0];
+        console.log('DTE/Factura encontrado:', dteFound);
+        break;
+      }
     }
   }
 
-  // Extraer Valor
-  const valorPatterns = [
-    /(?:total|monto|valor|pagar)[:\s]*Q?[:\s]*(\d+[.,]?\d*)/i,
-    /Q[:\s]*(\d+[.,]?\d+)/,
-    /(\d+\.\d{2})\s*$/m,
-    /(?:Q|GTQ)[:\s]*(\d{1,3}(?:[,.\s]\d{3})*[.,]\d{2})/i
-  ];
-  
-  for (const pattern of valorPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      let valor = match[1].replace(/[Qq\s]/g, '').replace(',', '.');
-      if (valor.indexOf('.') < valor.lastIndexOf(',')) {
-        valor = valor.replace('.', '').replace(',', '.');
+  // Fallback: buscar cualquier UUID o número largo
+  if (!dteFound) {
+    const matchB = cleanText.match(uuidRegex) || cleanText.match(simpleNumRegex);
+    if (matchB) dteFound = matchB[0];
+  }
+
+  if (dteFound) {
+    data.docNo = dteFound;
+  }
+
+  // 3. EXTRAER VALOR/TOTAL (MEJORADO PARA GUATEMALA)
+  const moneyMatches = cleanText.match(/(?:Q\s?)?([0-9]{1,3}(?:[,.][0-9]{3})*[.,][0-9]{2})/g);
+  if (moneyMatches) {
+    const values = moneyMatches.map(v => {
+      let raw = v.replace(/[Q\s]/g, '');
+      
+      // Si tiene coma como decimal (Q123,45)
+      if (raw.indexOf(',') > -1 && raw.indexOf('.') === -1) {
+        raw = raw.replace(',', '.');
+      } else {
+        // Si tiene punto como miles (Q1.234,56)
+        raw = raw.replace(/\./g, '').replace(',', '.');
       }
-      data.valor = parseFloat(valor).toFixed(2);
-      break;
+      
+      return parseFloat(raw);
+    });
+    
+    const maxVal = Math.max(...values.filter(v => !isNaN(v)));
+    if (maxVal > 0) {
+      data.valor = maxVal.toFixed(2);
     }
   }
 
@@ -401,7 +429,7 @@ async function uploadToGoogleDrive(base64Image, filename) {
     });
 
     console.log('Imagen enviada a Google Drive');
-    return `Drive: ${filename}`;
+    return `https://drive.google.com/drive/folders/1YiBTEkCqbYrqXFDHi5dUUdN0Gg2EqP5Y`;
     
   } catch (error) {
     console.error('Error subiendo a Drive:', error);
