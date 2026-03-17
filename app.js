@@ -2,7 +2,6 @@
 // Uses Tesseract.js, Supabase, Dexie.js
 
 // --- CONFIGURATION ---
-// These should ideally be in a config file or environment variables
 const SUPABASE_URL = 'https://kshaerozfrjrnhymopmm.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzaGFlcm96ZnJqcm5oeW1vcG1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MTcxNDMsImV4cCI6MjA4OTI5MzE0M30.2cc8utZdAL5U3-Az-ycdCDPTRDrs8euY-flaMJeQ654';
 
@@ -13,8 +12,8 @@ if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_URL !== '') {
 
 // --- DATABASE SETUP (Local) ---
 const db = new Dexie("InvoiceDB");
-db.version(1).stores({
-    invoices: '++id, vendor, date, total, category, status, image' // status: 'local', 'synced'
+db.version(2).stores({
+    invoices: '++id, vendor, invoice_number, date, total, category, status, image'
 });
 
 // --- UI ELEMENTS ---
@@ -35,7 +34,12 @@ const elements = {
     syncStatus: document.getElementById('sync-status'),
     totalAmount: document.getElementById('total-amount'),
     invoiceCount: document.getElementById('invoice-count'),
-    exportBtn: document.getElementById('export-btn')
+    exportBtn: document.getElementById('export-btn'),
+    formVendor: document.getElementById('form-vendor'),
+    formNumber: document.getElementById('form-number'),
+    formDate: document.getElementById('form-date'),
+    formTotal: document.getElementById('form-total'),
+    formCategory: document.getElementById('form-category')
 };
 
 let currentStream = null;
@@ -63,10 +67,11 @@ function setupEventListeners() {
     elements.invoiceForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = {
-            vendor: document.getElementById('form-vendor').value,
-            date: document.getElementById('form-date').value,
-            total: parseFloat(document.getElementById('form-total').value),
-            category: document.getElementById('form-category').value,
+            vendor: elements.formVendor.value,
+            invoice_number: elements.formNumber.value,
+            date: elements.formDate.value,
+            total: parseFloat(elements.formTotal.value),
+            category: elements.formCategory.value,
             status: 'local',
             image: elements.canvas.toDataURL('image/jpeg', 0.8)
         };
@@ -118,54 +123,69 @@ async function takePhoto() {
 // --- OCR LOGIC ---
 async function processImageWithOCR() {
     elements.processingOverlay.classList.remove('hidden');
-    elements.processingStatus.innerText = "Preparando motor OCR...";
+    elements.processingStatus.innerText = "Analizando factura...";
 
     try {
-        const worker = await Tesseract.createWorker('spa'); // Spanish
-        elements.processingStatus.innerText = "Reconociendo texto...";
-        
+        const worker = await Tesseract.createWorker('spa'); 
         const { data: { text } } = await worker.recognize(elements.canvas);
-        console.log("OCR Result:", text);
-        
         await worker.terminate();
         
-        // Basic parsing logic
         const parsedData = parseInvoiceText(text);
         
-        // Fill form
-        document.getElementById('form-vendor').value = parsedData.vendor || "";
-        document.getElementById('form-date').value = parsedData.date || new Date().toISOString().split('T')[0];
-        document.getElementById('form-total').value = parsedData.total || "";
+        elements.formVendor.value = parsedData.vendor || "";
+        elements.formNumber.value = parsedData.invoice_number || "";
+        elements.formDate.value = parsedData.date || new Date().toISOString().split('T')[0];
+        elements.formTotal.value = parsedData.total || "";
         
         elements.processingOverlay.classList.add('hidden');
         elements.editModal.classList.remove('hidden');
     } catch (err) {
         console.error(err);
         elements.processingOverlay.classList.add('hidden');
-        alert("Error en OCR: " + err.message);
-        // Still show modal to fill manually
         elements.editModal.classList.remove('hidden');
     }
 }
 
 function parseInvoiceText(text) {
-    const data = { vendor: "", date: "", total: "" };
+    const data = { vendor: "", invoice_number: "", date: "", total: "" };
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     
-    // Vendor: Usually the first lines
-    const lines = text.split('\n').filter(l => l.trim().length > 3);
-    if (lines.length > 0) data.vendor = lines[0].trim();
+    if (lines.length > 0) data.vendor = lines[0];
 
-    // Total: Look for numbers with Q or decimal points near keywords
-    const totalMatch = text.match(/(?:TOTAL|SUMA|NETO|PAGAR).*?(\d+[,.]\d{2})/i);
-    if (totalMatch) data.total = totalMatch[1].replace(',', '.');
-
-    // Date: DD/MM/YYYY or YYYY-MM-DD
-    const dateMatch = text.match(/(\d{2}[\/-]\d{2}[\/-]\d{4})/);
-    if (dateMatch) {
-        const parts = dateMatch[1].split(/[\/-]/);
-        if (parts[0].length === 4) data.date = dateMatch[1]; // YYYY-MM-DD
-        else data.date = `${parts[2]}-${parts[1]}-${parts[0]}`; // Convert to YYYY-MM-DD
+    // INVOICE NUMBER
+    const numberRegex = /(?:factura|f\.e\.|no\.|n[ú|u]mero|serie|autorizaci[ó|o]n|documento)[:\s]*([0-9a-z-]+(?:\s*[0-9a-z-]+)*)/i;
+    const numberMatch = text.match(numberRegex);
+    if (numberMatch) {
+        data.invoice_number = numberMatch[1].trim();
+    } else {
+        const feIndex = lines.findIndex(l => /factura\s+electr[ó|o]nica/i.test(l));
+        if (feIndex !== -1 && lines[feIndex + 1]) {
+            data.invoice_number = lines[feIndex + 1].trim();
+        }
     }
+
+    // DATE
+    const dateRegex = /(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})|(\d{4}-\d{1,2}-\d{1,2})/;
+    const dateMatch = text.match(dateRegex);
+    if (dateMatch) {
+        let dateStr = dateMatch[0];
+        if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            if (parts[2].length === 2) parts[2] = "20" + parts[2];
+            data.date = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else {
+            data.date = dateStr;
+        }
+    }
+
+    // TOTAL
+    const totalRegex = /(?:total|pago|suma|importe|neto|monto|pagar|q\.*)[:\s]*([0-9,]+\.[0-9]{2})/gi;
+    let match;
+    let lastMatch = null;
+    while ((match = totalRegex.exec(text)) !== null) {
+        lastMatch = match[1];
+    }
+    if (lastMatch) data.total = lastMatch.replace(',', '');
 
     return data;
 }
@@ -174,7 +194,6 @@ function parseInvoiceText(text) {
 async function loadInvoices() {
     const invoices = await db.invoices.toArray();
     elements.invoiceList.innerHTML = '';
-    
     let total = 0;
     
     if (invoices.length === 0) {
@@ -184,7 +203,6 @@ async function loadInvoices() {
                 <p>No hay facturas registradas</p>
             </div>
         `;
-        lucide.createIcons();
     } else {
         invoices.reverse().forEach(inv => {
             total += inv.total;
@@ -193,6 +211,7 @@ async function loadInvoices() {
             card.innerHTML = `
                 <div class="invoice-info">
                     <h4>${inv.vendor}</h4>
+                    <p style="font-size: 0.7rem; font-family: monospace; color: var(--primary-color)">${inv.invoice_number || 'S/N'}</p>
                     <p>${inv.date} • ${inv.category}</p>
                 </div>
                 <div class="invoice-amount">
@@ -202,9 +221,8 @@ async function loadInvoices() {
             `;
             elements.invoiceList.appendChild(card);
         });
-        lucide.createIcons();
     }
-    
+    lucide.createIcons();
     elements.totalAmount.innerText = `Q${total.toFixed(2)}`;
     elements.invoiceCount.innerText = invoices.length;
 }
@@ -223,24 +241,20 @@ function checkOnlineStatus() {
 
 async function syncWithSupabase() {
     if (!navigator.onLine || !sbClient) return;
-
     const unsynced = await db.invoices.where('status').equals('local').toArray();
-    
     for (const inv of unsynced) {
         try {
             const { error } = await sbClient
                 .from('invoices')
                 .insert([{
                     vendor: inv.vendor,
+                    invoice_number: inv.invoice_number,
                     date: inv.date,
                     total: inv.total,
                     category: inv.category,
-                    image_url: inv.image // Note: For real apps, upload to Storage first
+                    image_url: inv.image
                 }]);
-            
-            if (!error) {
-                await db.invoices.update(inv.id, { status: 'synced' });
-            }
+            if (!error) await db.invoices.update(inv.id, { status: 'synced' });
         } catch (err) {
             console.error("Sync error:", err);
         }
@@ -248,25 +262,12 @@ async function syncWithSupabase() {
     loadInvoices();
 }
 
-// --- EXPORT ---
 async function exportToCSV() {
     const invoices = await db.invoices.toArray();
     if (invoices.length === 0) return alert("Nada que exportar");
-
-    const headers = ["ID", "Establecimiento", "Fecha", "Total", "Categoria", "Estado"];
-    const rows = invoices.map(inv => [
-        inv.id,
-        `"${inv.vendor}"`,
-        inv.date,
-        inv.total,
-        inv.category,
-        inv.status
-    ]);
-
-    const csvContent = "data:text/csv;charset=utf-8," 
-        + headers.join(",") + "\n"
-        + rows.map(r => r.join(",")).join("\n");
-
+    const headers = ["ID", "Establecimiento", "No. Factura", "Fecha", "Total", "Categoria", "Estado"];
+    const rows = invoices.map(inv => [inv.id, `"${inv.vendor}"`, `"${inv.invoice_number}"`, inv.date, inv.total, inv.category, inv.status]);
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(r => r.join(",")).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -279,8 +280,6 @@ async function exportToCSV() {
 // --- SERVICE WORKER REGISTRATION ---
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('SW Registered', reg))
-            .catch(err => console.log('SW Error', err));
+        navigator.serviceWorker.register('./sw.js').then(reg => console.log('SW Registered')).catch(err => console.log('SW Error', err));
     });
 }
