@@ -1,43 +1,41 @@
-const CACHE_NAME = 'reintegros-v3';
-const APP_SHELL = [
+const CACHE_NAME = 'billscanner-v1';
+const ASSETS = [
   './',
   './index.html',
-  './styles.css',
+  './index.css',
   './app.js',
-  './manifest.json'
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+  'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',
+  'https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js',
+  'https://unpkg.com/lucide@latest'
 ];
 
-self.addEventListener('install', event => {
+// Install Event
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL))
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log('Caching assets');
+      return cache.addAll(ASSETS);
+    })
   );
-  self.skipWaiting();
 });
 
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-
-  // Solo manejamos peticiones de nuestro propio dominio
-  if (url.origin === self.location.origin) {
-    event.respondWith(
-      caches.match(event.request).then(response => {
-        return response || fetch(event.request);
-      })
-    );
-    return;
-  }
-
-  // Todo lo externo (Tesseract, Apps Script) va directo a la red
-  return;
+// Activate Event
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      );
+    })
+  );
 });
 
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys.map(k => (k !== CACHE_NAME ? caches.delete(k) : null))
-      )
-    )
+// Fetch Event
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      return cachedResponse || fetch(event.request);
+    })
   );
-  self.clients.claim();
 });
